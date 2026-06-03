@@ -1,0 +1,70 @@
+﻿symbol,name,note,enabled
+ES=F,E-Mini S&P 500 Jun 26,期货(主流),true
+MES=F,MICRO E-MINI S&P 500 INDEX FUTU,期货(主流),true
+NQ=F,Nasdaq 100 Jun 26,期货(主流),true
+MNQ=F,Micro E-mini Nasdaq-100 Index F,期货(主流),true
+YM=F,Mini Dow Jones Indus.-$5 Jun 26,期货(主流),true
+MYM=F,Micro E-mini Dow Jones Industri,期货(主流),true
+RTY=F,E-mini Russell 2000 Index Futur,期货(主流),true
+M2K=F,Micro E-mini Russell 2000 Index,期货(主流),true
+NKD=F,"Nikkei/USD Futures,Jun-2026",期货(主流),true
+ZT=F,"2-Year T-Note Futures,Sep-2026",期货(主流),true
+ZF=F,"5-Year T-Note Futures,Sep-2026",期货(主流),true
+ZN=F,"10-Year T-Note Futures,Sep-2026",期货(主流),true
+TN=F,Ultra 10-Year U.S. Treasury Not,期货(主流),true
+ZB=F,"U.S. Treasury Bond Futures,Sep-",期货(主流),true
+UB=F,Ultra U.S. Treasury Bond Future,期货(主流),true
+ZQ=F,"30 Day Federal Funds Futures,Au",期货(主流),true
+6E=F,"Euro FX Futures,Jun-2026",期货(主流),true
+6J=F,"Japanese Yen Futures,Jun-2026",期货(主流),true
+6B=F,"British Pound Futures,Jun-2026",期货(主流),true
+6A=F,"Australian Dollar Futures,Jun-2",期货(主流),true
+6C=F,"Canadian Dollar Futures,Jun-202",期货(主流),true
+6S=F,"Swiss Franc Futures,Jun-2026",期货(主流),true
+6N=F,"New Zealand Dollar Futures,Jun-",期货(主流),true
+6M=F,"Mexican Peso Futures,Jun-2026",期货(主流),true
+CNH=F,Standard-Size USD/Offshore RMB,期货(主流),true
+GC=F,Gold Aug 26,期货(主流),true
+MGC=F,"Micro Gold Futures,Aug-2026",期货(主流),true
+SI=F,Silver Jul 26,期货(主流),true
+SIL=F,"Micro Silver Futures,Jul-2026",期货(主流),true
+HG=F,Copper Jul 26,期货(主流),true
+PL=F,Platinum Jul 26,期货(主流),true
+PA=F,Palladium Sep 26,期货(主流),true
+ALI=F,"Aluminum Futures,Aug-2026",期货(主流),true
+CL=F,Crude Oil Jul 26,期货(主流),true
+BZ=F,Brent Crude Oil Last Day Financ,期货(主流),true
+NG=F,Natural Gas Jul 26,期货(主流),true
+RB=F,RBOB Gasoline Jul 26,期货(主流),true
+HO=F,Heating Oil Jul 26,期货(主流),true
+ZC=F,"Corn Futures,Jul-2026",期货(主流),true
+ZS=F,"Soybean Futures,Jul-2026",期货(主流),true
+ZW=F,"Chicago SRW Wheat Futures,Jul-2",期货(主流),true
+KE=F,"KC HRW Wheat Futures,Jul-2026",期货(主流),true
+ZL=F,"Soybean Oil Futures,Jul-2026",期货(主流),true
+ZM=F,"Soybean Meal Futures,Jul-2026",期货(主流),true
+ZO=F,"Oat Futures,Jul-2026",期货(主流),true
+ZR=F,"Rough Rice Futures,Jul-2026",期货(主流),true
+KC=F,Coffee Sep 26,期货(主流),true
+CC=F,Cocoa Sep 26,期货(主流),true
+SB=F,Sugar #11 Jul 26,期货(主流),true
+CT=F,Cotton Mar 26,期货(主流),true
+OJ=F,Orange Juice Jul 26,期货(主流),true
+LBR=F,"Lumber Futures,Jul-2026",期货(主流),true
+LE=F,"Live Cattle Futures,Aug-2026",期货(主流),true
+GF=F,"Feeder Cattle Futures,Aug-2026",期货(主流),true
+HE=F,"Lean Hog Futures,Jul-2026",期货(主流),true
+BTC=F,"Bitcoin Futures,Jun-2026",期货(主流),true
+ETH=F,Ethereum Jun 26,期货(主流),true
+000001.SS,上证综指,中国指数,true
+399001.SZ,深证成指,中国指数,true
+000300.SS,沪深300,中国指数,true
+^HSI,恒生指数,中国指数,true
+^HSCE,恒生中国企业指数,中国指数,true
+AAPL,Apple 苹果,美股七姐妹,true
+MSFT,Microsoft 微软,美股七姐妹,true
+GOOGL,Alphabet 谷歌,美股七姐妹,true
+AMZN,Amazon 亚马逊,美股七姐妹,true
+NVDA,NVIDIA 英伟达,美股七姐妹,true
+META,Meta,美股七姐妹,true
+TSLA,Tesla 特斯拉,美股七姐妹,true

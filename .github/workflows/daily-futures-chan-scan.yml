@@ -45,6 +45,7 @@ jobs:
         run: |
           RUN_DATE="$(date -u +%F)"
           python scripts/scan_latest_futures_signals.py \
+            --watchlist data/watchlist.csv \
             --range 5y \
             --min-bars 120 \
             --workers 6 \

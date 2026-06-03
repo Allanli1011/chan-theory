@@ -113,11 +113,48 @@ def chart_title(row: Dict) -> str:
 
 
 def relpath(path: Path) -> str:
-    return os.path.relpath(path, ROOT).replace(os.sep, "/")
+    try:
+        return os.path.relpath(path, ROOT).replace(os.sep, "/")
+    except ValueError:
+        # Windows: 输出目录与仓库不在同一盘符时 relpath 会抛错, 回退绝对路径
+        return str(path).replace(os.sep, "/")
 
 
 def default_run_date() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def load_watchlist(path: str) -> List[Dict]:
+    """从 CSV 自选清单读取要扫描的品种。
+
+    列约定 (表头不区分大小写):
+      * symbol   : 必填, Yahoo 代码 (期货 ES=F / 个股 AAPL / 指数 000001.SS / 加密 BTC-USD 皆可);
+      * name     : 选填, 显示名 (用于图表标题与 short_name);
+      * note     : 选填, 备注, 程序忽略;
+      * enabled  : 选填, false/0/no/off 表示停用该行, 缺省视为启用。
+    symbol 以 '#' 开头的行视为注释跳过; 重复 symbol 只保留首次。
+    """
+    rows: List[Dict] = []
+    seen = set()
+    with open(path, encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for raw in reader:
+            record = {(k or "").strip().lower(): (v or "").strip()
+                      for k, v in raw.items()}
+            symbol = (record.get("symbol") or record.get("ticker")
+                      or record.get("code") or "")
+            if not symbol or symbol.startswith("#"):
+                continue
+            enabled = (record.get("enabled") or record.get("active") or "true").lower()
+            if enabled in {"false", "0", "no", "n", "off"}:
+                continue
+            if symbol in seen:
+                continue
+            seen.add(symbol)
+            name = (record.get("name") or record.get("short_name")
+                    or record.get("shortname") or symbol)
+            rows.append({"symbol": symbol, "shortName": name})
+    return rows
 
 
 def analyze_symbol_for_new_signals(row: Dict, range_: str, min_bars: int,
@@ -242,7 +279,7 @@ def write_signal_outputs(scans: Sequence[SymbolScan], out_dir: Path,
                 "exchange": scan.row.get("exchange", ""),
                 "full_exchange_name": scan.row.get("fullExchangeName", ""),
                 "contract_kind": (
-                    "continuous" if symbol.endswith("=F") else "dated"
+                    "continuous" if symbol.endswith("=F") else "other"
                 ),
                 "signal": signal_code(signal.bsp_type),
                 "signal_type": signal.bsp_type.name,
@@ -288,12 +325,12 @@ def write_csv(path: Path, rows: Sequence[Dict]) -> None:
 def write_index(path: Path, rows: Sequence[Dict], skipped: Counter,
                 discovered: int, selected: int, run_date: str) -> None:
     lines = [
-        "# Latest Yahoo Futures Chan Signals",
+        "# Latest Yahoo Chan Signals",
         "",
         f"- Generated UTC: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         f"- Date folder: {run_date}",
-        f"- Yahoo screener symbols discovered: {discovered}",
-        f"- Symbols selected: {selected}",
+        f"- Candidate symbols: {discovered}",
+        f"- Symbols scanned: {selected}",
         f"- New signal rows: {len(rows)}",
         f"- Products with new signals: {len({row['symbol'] for row in rows})}",
         "",
@@ -334,6 +371,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-dated", action="store_true")
     parser.add_argument("--symbols", default="",
                         help="Comma-separated symbols to scan instead of screener selection")
+    parser.add_argument("--watchlist", default="",
+                        help="CSV watchlist path (cols: symbol[,name,note,enabled]); "
+                             "when set, scans exactly those symbols and skips the screener")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--sleep", type=float, default=0.0)
     parser.add_argument("--chart-timeout", type=float, default=12.0)
@@ -373,9 +413,10 @@ def main() -> int:
     csv_path = out_dir / "latest_chan_signals.csv"
     index_path = out_dir / "index.md"
 
-    session = make_session()
-    discovered = discover_futures(session)
     if args.symbols:
+        # 显式给定逗号分隔代码: 用期货 screener 补全元数据, 缺失则用代码本身
+        session = make_session()
+        discovered = discover_futures(session)
         requested = [symbol.strip() for symbol in args.symbols.split(",")
                      if symbol.strip()]
         by_symbol = {row["symbol"]: row for row in discovered}
@@ -383,20 +424,29 @@ def main() -> int:
             by_symbol.get(symbol, {"symbol": symbol, "shortName": symbol})
             for symbol in requested
         ]
+        discovered_count = len(discovered)
+    elif args.watchlist:
+        # 自选清单模式: 只扫清单内品种, 不访问期货 screener
+        symbols = load_watchlist(args.watchlist)
+        discovered_count = len(symbols)
     else:
+        # 默认: 期货 screener 自动发现
+        session = make_session()
+        discovered = discover_futures(session)
         symbols = iter_symbols(
             discovered, args.include_dated, args.only_standard_continuous)
+        discovered_count = len(discovered)
     if args.limit:
         symbols = symbols[:args.limit]
 
     scans, skipped = scan_symbols(symbols, args)
     rows = write_signal_outputs(scans, out_dir, chart_dir, args.plot_bars)
     write_csv(csv_path, rows)
-    write_index(index_path, rows, skipped, len(discovered), len(symbols),
+    write_index(index_path, rows, skipped, discovered_count, len(symbols),
                 args.run_date)
 
     print(json.dumps({
-        "discovered": len(discovered),
+        "discovered": discovered_count,
         "selected": len(symbols),
         "analyzed": len(scans),
         "new_signal_rows": len(rows),

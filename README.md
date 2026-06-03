@@ -111,6 +111,36 @@ for name, a in res.items():
 一买 @ 2025-04-08  价=169.21  下跌笔背驰(后笔绿柱面积更小) 力度比0.76
 ```
 
+## 每日自动扫描自选清单 (GitHub Actions)
+
+仓库内置定时工作流 [`.github/workflows/daily-futures-chan-scan.yml`](.github/workflows/daily-futures-chan-scan.yml)，
+每个工作日自动用缠论框架扫描**自选清单**里的品种，挑出当天**新确认**的一/二/三类买卖点，
+连同 CSV、Markdown 摘要与标注图自动提交到 `data/futures_latest_signals/<日期>/`。
+
+**自选清单就是一个 CSV：[`data/watchlist.csv`](data/watchlist.csv)** —— 想加新品种直接加一行即可：
+
+```csv
+symbol,name,note,enabled
+ES=F,E-mini S&P 500,美股大盘期货,true
+AAPL,Apple Inc.,个股也可,true
+000001.SS,上证指数,A股指数也可,true
+BTC-USD,Bitcoin,加密(暂时停用),false
+```
+
+- `symbol`：Yahoo 代码（期货 `=F`、个股、指数 `.SS`、加密 `-USD` 等均支持），必填；
+- `name`：显示名（图表标题用），选填；`note`：备注，程序忽略；
+- `enabled`：填 `false/no/off` 可临时停用该行（缺省为启用）；`symbol` 以 `#` 开头当注释跳过。
+
+本地手动跑（仅扫清单、不碰全市场 screener）：
+
+```bash
+python scripts/scan_latest_futures_signals.py --watchlist data/watchlist.csv \
+  --range 5y --min-bars 120 --workers 6 --max-signal-age-bars 20 \
+  --output-dir data/futures_latest_signals/$(date -u +%F)
+```
+
+> 改完清单要 `git push` 到 GitHub，次日定时（或手动 `workflow_dispatch` 触发）的 Action 才会按新清单跑。
+
 ## 语料库
 
 [`corpus/`](corpus/) 含从博客抓取的 93 篇《教你炒股票》正文（UTF-8 纯文本）与 [`manifest.csv`](corpus/manifest.csv) 索引。
