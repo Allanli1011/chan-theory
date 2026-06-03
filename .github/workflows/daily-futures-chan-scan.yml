@@ -1,0 +1,62 @@
+name: Daily Futures Chan Scan
+
+on:
+  schedule:
+    # 23:30 UTC is safely after the common 17:00 US futures session break
+    # in both EDT and EST.
+    - cron: "30 23 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run latest futures signal scan
+        run: |
+          RUN_DATE="$(date -u +%F)"
+          python scripts/scan_latest_futures_signals.py \
+            --range 5y \
+            --min-bars 120 \
+            --workers 6 \
+            --chart-timeout 12 \
+            --sleep 0 \
+            --max-signal-age-bars 20 \
+            --run-date "$RUN_DATE"
+
+      - name: Upload generated scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: futures-chan-latest-signals
+          path: data/futures_latest_signals/
+          if-no-files-found: error
+
+      - name: Commit generated scan results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/futures_latest_signals
+          if git diff --cached --quiet; then
+            echo "No generated scan result changes to commit."
+          else
+            git commit -m "Update daily futures Chan signals"
+            git push
+          fi

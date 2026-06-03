@@ -1,0 +1,10 @@
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+mplfinance>=0.12
+# 可选: TA-Lib 用于 MACD (无则使用内置 EMA 实现, 见 chanlun/macd.py)
+# TA-Lib>=0.4
+# 仅爬虫脚本需要:
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=4.9
