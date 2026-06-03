@@ -12,12 +12,14 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
 import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, Iterable, List
 from urllib.parse import quote
 
@@ -26,11 +28,13 @@ import requests
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "data", "futures_analysis")
+DEFAULT_CHART_CACHE_DIR = os.path.join(ROOT, "data", "yahoo_chart_cache")
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 SCREENER_URL = "https://query1.finance.yahoo.com/v1/finance/screener"
 CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 _THREAD_LOCAL = threading.local()
+CHART_COLUMNS = ["date", "open", "high", "low", "close", "volume"]
 
 
 def make_session() -> requests.Session:
@@ -134,6 +138,104 @@ def fetch_chart(session: requests.Session, symbol: str, range_: str,
             "volume": (quote_data.get("volume") or [0] * len(ts))[i] or 0,
         })
     return pd.DataFrame(rows)
+
+
+def _safe_cache_token(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_") or "unknown"
+
+
+def chart_cache_path(cache_dir: os.PathLike | str, symbol: str, range_: str,
+                     interval: str = "1d") -> Path:
+    return (
+        Path(cache_dir)
+        / _safe_cache_token(interval)
+        / _safe_cache_token(range_)
+        / f"{_safe_cache_token(symbol)}.csv"
+    )
+
+
+def normalize_chart_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=CHART_COLUMNS)
+    d = df.copy()
+    required = ["date", "open", "high", "low", "close"]
+    if any(col not in d.columns for col in required):
+        return pd.DataFrame(columns=CHART_COLUMNS)
+    if "volume" not in d.columns:
+        d["volume"] = 0
+
+    dates = pd.to_datetime(d["date"], errors="coerce", utc=True)
+    d = d.loc[dates.notna()].copy()
+    if d.empty:
+        return pd.DataFrame(columns=CHART_COLUMNS)
+    d["date"] = dates.loc[d.index].dt.strftime("%Y-%m-%d")
+    for col in ["open", "high", "low", "close", "volume"]:
+        d[col] = pd.to_numeric(d[col], errors="coerce")
+    d = d.dropna(subset=["open", "high", "low", "close"])
+    d["_order"] = range(len(d))
+    d = d.sort_values(["date", "_order"]).drop_duplicates("date", keep="last")
+    return d[CHART_COLUMNS].reset_index(drop=True)
+
+
+def merge_chart_frames(*frames: pd.DataFrame) -> pd.DataFrame:
+    normalized = [normalize_chart_df(frame) for frame in frames
+                  if frame is not None and not frame.empty]
+    if not normalized:
+        return pd.DataFrame(columns=CHART_COLUMNS)
+    return normalize_chart_df(pd.concat(normalized, ignore_index=True))
+
+
+def trim_chart_range(df: pd.DataFrame, range_: str) -> pd.DataFrame:
+    d = normalize_chart_df(df)
+    if d.empty:
+        return d
+    match = re.fullmatch(r"(\d+)(d|mo|y)", str(range_).strip().lower())
+    if not match:
+        return d
+    amount = int(match.group(1))
+    unit = match.group(2)
+    dates = pd.to_datetime(d["date"], errors="coerce")
+    latest = dates.max()
+    if unit == "d":
+        cutoff = latest - pd.Timedelta(days=amount)
+    elif unit == "mo":
+        cutoff = latest - pd.DateOffset(months=amount)
+    else:
+        cutoff = latest - pd.DateOffset(years=amount)
+    return d.loc[dates >= cutoff].reset_index(drop=True)
+
+
+def read_chart_cache(path: os.PathLike | str) -> pd.DataFrame:
+    try:
+        return normalize_chart_df(pd.read_csv(path))
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        return pd.DataFrame(columns=CHART_COLUMNS)
+
+
+def write_chart_cache(path: os.PathLike | str, df: pd.DataFrame) -> None:
+    out = normalize_chart_df(df)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(path, index=False)
+
+
+def fetch_chart_cached(session: requests.Session, symbol: str, range_: str,
+                       timeout: float, cache_dir: os.PathLike | str | None,
+                       refresh_range: str = "10d",
+                       force_refresh: bool = False) -> pd.DataFrame:
+    if not cache_dir:
+        return fetch_chart(session, symbol, range_, timeout)
+
+    path = chart_cache_path(cache_dir, symbol, range_)
+    cached = read_chart_cache(path)
+    if force_refresh or cached.empty:
+        merged = fetch_chart(session, symbol, range_, timeout)
+    else:
+        recent = fetch_chart(session, symbol, refresh_range, timeout)
+        merged = merge_chart_frames(cached, recent)
+    merged = trim_chart_range(merged, range_)
+    write_chart_cache(path, merged)
+    return merged
 
 
 def analyze_symbol(row: Dict, df: pd.DataFrame, zhongshu_mode: str) -> Dict:
@@ -259,6 +361,10 @@ def main() -> int:
     parser.add_argument("--sleep", type=float, default=0.15)
     parser.add_argument("--chart-timeout", type=float, default=12.0)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--cache-dir", default=DEFAULT_CHART_CACHE_DIR)
+    parser.add_argument("--cache-refresh-range", default="10d")
+    parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--force-refresh", action="store_true")
     parser.add_argument("--only-standard-continuous", action="store_true")
     parser.add_argument("--zhongshu-mode", default="extension",
                         choices=["extension", "same_level"])
@@ -280,7 +386,11 @@ def main() -> int:
     def process(row: Dict):
         symbol = row["symbol"]
         try:
-            df = fetch_chart(chart_session(), symbol, args.range_, args.chart_timeout)
+            df = fetch_chart_cached(
+                chart_session(), symbol, args.range_, args.chart_timeout,
+                None if args.no_cache else args.cache_dir,
+                args.cache_refresh_range, args.force_refresh,
+            )
             if len(df) < args.min_bars:
                 return "skip", "too_few_bars", None
             return "row", None, analyze_symbol(row, df, args.zhongshu_mode)

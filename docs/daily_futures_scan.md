@@ -23,6 +23,19 @@ The CSV contains one row per newly recognized `1B`, `2B`, `3B`, `1S`, `2S`, or
 `3S` signal. The chart directory contains one Chan-annotated chart per product
 that produced at least one new signal in the scan.
 
+## Yahoo Data Cache
+
+The workflow caches Yahoo daily chart CSVs under:
+
+```text
+data/yahoo_chart_cache/
+```
+
+The first run for a symbol downloads the full requested range, such as `5y`.
+Later runs restore the cache and refresh only a short recent window, defaulting
+to `10d`, then merge those bars into the cached CSV. The cache is managed by
+GitHub Actions cache and is intentionally not committed to the repository.
+
 ## New Signal Rule
 
 The scanner analyzes each futures symbol twice:
@@ -54,4 +67,8 @@ Useful options:
 --limit N                    Scan only the first N selected symbols.
 --plot-bars N                Number of latest daily bars shown in each chart.
 --run-date YYYY-MM-DD        Override the date folder name for backfills.
+--cache-dir PATH             Cache Yahoo chart CSVs in PATH.
+--cache-refresh-range 10d    Recent range to refresh when a cache file exists.
+--no-cache                   Disable chart caching.
+--force-refresh              Ignore existing cache and redownload full ranges.
 ```

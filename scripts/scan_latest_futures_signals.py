@@ -30,9 +30,10 @@ for path in (ROOT, SCRIPTS_DIR):
         sys.path.insert(0, str(path))
 
 from analyze_yahoo_futures import (  # noqa: E402
+    DEFAULT_CHART_CACHE_DIR,
     chart_session,
     discover_futures,
-    fetch_chart,
+    fetch_chart_cached,
     iter_symbols,
     make_session,
 )
@@ -122,10 +123,16 @@ def default_run_date() -> str:
 def analyze_symbol_for_new_signals(row: Dict, range_: str, min_bars: int,
                                    chart_timeout: float,
                                    zhongshu_mode: str,
-                                   max_signal_age_bars: int):
+                                   max_signal_age_bars: int,
+                                   cache_dir: str | None,
+                                   cache_refresh_range: str,
+                                   force_refresh: bool):
     symbol = row["symbol"]
     try:
-        df = fetch_chart(chart_session(), symbol, range_, chart_timeout)
+        df = fetch_chart_cached(
+            chart_session(), symbol, range_, chart_timeout, cache_dir,
+            cache_refresh_range, force_refresh,
+        )
         if len(df) < min_bars:
             return "skip", "too_few_bars", None
         if len(df) < 2:
@@ -153,6 +160,9 @@ def scan_symbols(symbols: Sequence[Dict], args) -> Tuple[List[SymbolScan], Count
             chart_timeout=args.chart_timeout,
             zhongshu_mode=args.zhongshu_mode,
             max_signal_age_bars=args.max_signal_age_bars,
+            cache_dir=None if args.no_cache else args.cache_dir,
+            cache_refresh_range=args.cache_refresh_range,
+            force_refresh=args.force_refresh,
         )
 
     if args.workers <= 1:
@@ -328,6 +338,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sleep", type=float, default=0.0)
     parser.add_argument("--chart-timeout", type=float, default=12.0)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--cache-dir", default=DEFAULT_CHART_CACHE_DIR)
+    parser.add_argument("--cache-refresh-range", default="10d")
+    parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--force-refresh", action="store_true")
     parser.add_argument("--only-standard-continuous", action="store_true")
     parser.add_argument("--zhongshu-mode", default="extension",
                         choices=["extension", "same_level"])
@@ -391,6 +405,8 @@ def main() -> int:
         "csv": str(csv_path),
         "index": str(index_path),
         "chart_dir": str(chart_dir),
+        "cache_dir": "" if args.no_cache else str(Path(args.cache_dir).resolve()),
+        "cache_refresh_range": args.cache_refresh_range,
     }, ensure_ascii=False, indent=2))
     return 0
 

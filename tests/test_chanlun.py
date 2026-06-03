@@ -20,6 +20,12 @@ from chanlun.signals import classify_trend, find_buy_sell_points
 from chanlun.zhongshu import find_zhongshus
 from chanlun.macd import compute_macd, MacdHelper
 from chanlun.analyzer import ChanAnalyzer
+from scripts.analyze_yahoo_futures import (
+    chart_cache_path,
+    fetch_chart_cached,
+    merge_chart_frames,
+    trim_chart_range,
+)
 from scripts.scan_latest_futures_signals import find_new_signals, signal_code
 
 
@@ -309,3 +315,91 @@ def test_daily_signal_delta_filters_stale_reclassified_signal():
     signals = find_new_signals(current, previous, max_signal_age_bars=5)
 
     assert [signal_code(signal.bsp_type) for signal in signals] == ["3B"]
+
+
+def test_chart_cache_path_sanitizes_symbol(tmp_path):
+    path = chart_cache_path(tmp_path, "ES=F", "5y")
+
+    assert path == tmp_path / "1d" / "5y" / "ES_F.csv"
+
+
+def test_merge_chart_frames_deduplicates_by_latest_date():
+    import pandas as pd
+
+    cached = pd.DataFrame({
+        "date": ["2024-01-01", "2024-01-02"],
+        "open": [1, 2],
+        "high": [2, 3],
+        "low": [0, 1],
+        "close": [1.5, 2.5],
+        "volume": [10, 20],
+    })
+    recent = pd.DataFrame({
+        "date": ["2024-01-02", "2024-01-03"],
+        "open": [22, 3],
+        "high": [23, 4],
+        "low": [21, 2],
+        "close": [22.5, 3.5],
+        "volume": [220, 30],
+    })
+
+    merged = merge_chart_frames(cached, recent)
+
+    assert list(merged["date"]) == ["2024-01-01", "2024-01-02", "2024-01-03"]
+    assert merged.loc[merged["date"] == "2024-01-02", "open"].item() == 22
+
+
+def test_trim_chart_range_keeps_recent_window():
+    import pandas as pd
+
+    df = pd.DataFrame({
+        "date": ["2022-01-01", "2023-01-01", "2024-01-01"],
+        "open": [1, 2, 3],
+        "high": [1, 2, 3],
+        "low": [1, 2, 3],
+        "close": [1, 2, 3],
+        "volume": [1, 2, 3],
+    })
+
+    trimmed = trim_chart_range(df, "1y")
+
+    assert list(trimmed["date"]) == ["2023-01-01", "2024-01-01"]
+
+
+def test_fetch_chart_cached_refreshes_recent_data(tmp_path, monkeypatch):
+    import pandas as pd
+    import scripts.analyze_yahoo_futures as futures
+
+    calls = []
+
+    def fake_fetch(session, symbol, range_, timeout):
+        calls.append((symbol, range_))
+        if range_ == "5y":
+            return pd.DataFrame({
+                "date": ["2024-01-01", "2024-01-02"],
+                "open": [1, 2],
+                "high": [2, 3],
+                "low": [0, 1],
+                "close": [1.5, 2.5],
+                "volume": [10, 20],
+            })
+        return pd.DataFrame({
+            "date": ["2024-01-02", "2024-01-03"],
+            "open": [22, 3],
+            "high": [23, 4],
+            "low": [21, 2],
+            "close": [22.5, 3.5],
+            "volume": [220, 30],
+        })
+
+    monkeypatch.setattr(futures, "fetch_chart", fake_fetch)
+
+    first = fetch_chart_cached(None, "ES=F", "5y", 1,
+                               cache_dir=tmp_path, refresh_range="10d")
+    second = fetch_chart_cached(None, "ES=F", "5y", 1,
+                                cache_dir=tmp_path, refresh_range="10d")
+
+    assert calls == [("ES=F", "5y"), ("ES=F", "10d")]
+    assert list(first["date"]) == ["2024-01-01", "2024-01-02"]
+    assert list(second["date"]) == ["2024-01-01", "2024-01-02", "2024-01-03"]
+    assert second.loc[second["date"] == "2024-01-02", "open"].item() == 22
