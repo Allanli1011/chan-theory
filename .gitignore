@@ -14,6 +14,9 @@ data/futures_latest_signals/index.md
 data/futures_latest_signals/charts/
 data/yahoo_chart_cache/
 
+# 抓取的缠中说禅博客原文受版权保护, 不随仓库分发; 本地用 scripts/scrape_blog.py 自行生成
+corpus/
+
 .env
 .venv/
 venv/
