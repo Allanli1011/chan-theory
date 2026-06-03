@@ -1,15 +1,15 @@
 # Latest Yahoo Futures Chan Signals
 
-- Generated UTC: 2026-06-03T04:36:11Z
+- Generated UTC: 2026-06-03T04:41:24Z
 - Date folder: 2026-06-03
-- Yahoo screener symbols discovered: 1576
-- Symbols selected: 271
+- Yahoo screener symbols discovered: 1577
+- Symbols selected: 272
 - New signal rows: 6
 - Products with new signals: 6
 
 ## Skips
 
-- too_few_bars: 129
+- too_few_bars: 130
 
 ## Signals
 
