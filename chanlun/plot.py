@@ -18,16 +18,44 @@ from matplotlib.patches import Rectangle
 
 from .models import BSPType, Direction
 
-# 中文字体: 给出回退链, 取系统中实际可用者 (Windows 常见 YaHei/SimHei)
-_CJK_FONTS = ["Microsoft YaHei", "SimHei", "SimSun", "DengXian", "DejaVu Sans"]
+# 中文字体回退链 (跨平台): Windows / macOS / Linux(CI 用 apt 装 fonts-wqy-* 或 noto-cjk)
+_CJK_FONTS = [
+    "Microsoft YaHei", "SimHei", "SimSun", "DengXian",            # Windows
+    "PingFang SC", "Hiragino Sans GB", "STHeiti", "Arial Unicode MS",  # macOS
+    "WenQuanYi Zen Hei", "WenQuanYi Micro Hei",                   # Linux: fonts-wqy-*
+    "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK TC",   # Linux: fonts-noto-cjk
+    "Noto Sans CJK", "Source Han Sans SC", "Droid Sans Fallback",
+    "DejaVu Sans",                                                # 最后回退(无中文字形)
+]
+_CJK_FILE_TOKENS = ("wqy", "noto", "cjk", "hei", "song", "ming",
+                    "han", "droidsansfallback", "yahei", "simsun")
 
 
 def _pick_cjk_fonts():
+    """返回系统中实际可用的中文字体回退链。
+
+    先按字体名匹配; 若一个都没命中(常见于裸 Linux/CI), 则主动扫描系统字体文件,
+    注册疑似中文字体并用其真实名称, 确保中文不会退化成豆腐块(□)。
+    """
     try:
-        from matplotlib import font_manager
-        have = {f.name for f in font_manager.fontManager.ttflist}
+        from matplotlib import font_manager as fm
+        have = {f.name for f in fm.fontManager.ttflist}
         ordered = [f for f in _CJK_FONTS if f in have]
-        return ordered or _CJK_FONTS
+        if ordered:
+            return ordered + ["DejaVu Sans"]
+        import os
+        found = []
+        for path in fm.findSystemFonts(fontext="ttf"):
+            base = os.path.basename(path).lower()
+            if any(tok in base for tok in _CJK_FILE_TOKENS):
+                try:
+                    fm.fontManager.addfont(path)
+                    found.append(fm.FontProperties(fname=path).get_name())
+                except Exception:  # noqa: BLE001
+                    pass
+        # 去重保序
+        uniq = list(dict.fromkeys(found))
+        return uniq + ["DejaVu Sans"] if uniq else _CJK_FONTS
     except Exception:  # noqa: BLE001
         return _CJK_FONTS
 

@@ -33,6 +33,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install CJK fonts (for Chinese chart labels)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-wqy-zenhei fonts-wqy-microhei fonts-noto-cjk
+          rm -rf ~/.cache/matplotlib
+
       - name: Restore Yahoo chart cache
         uses: actions/cache@v4
         with:
