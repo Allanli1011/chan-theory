@@ -1,22 +1,21 @@
-# Latest Yahoo Futures Chan Signals
+# Latest Yahoo Chan Signals
 
-- Generated UTC: 2026-06-03T04:43:45Z
+- Generated UTC: 2026-06-03T08:10:16Z
 - Date folder: 2026-06-03
-- Yahoo screener symbols discovered: 1570
-- Symbols selected: 271
-- New signal rows: 6
-- Products with new signals: 6
+- Candidate symbols: 69
+- Symbols scanned: 69
+- New signal rows: 5
+- Products with new signals: 5
 
 ## Skips
 
-- too_few_bars: 128
+- None
 
 ## Signals
 
 | Symbol | Name | Signal | Signal Date | Age | Price | Trend | Chart |
 |---|---|---:|---:|---:|---:|---|---|
-| RVT=F | BTIC on E-mini Russell 1000 Val | 1B | 2026-05-29 | 2 | 3.2 | UP | [chart](charts/chan_RVT_F.png) |
-| XAU=F | E-mini Utilities Select Sector  | 1B | 2026-06-01 | 1 | 869.29999 | CONSOLIDATION | [chart](charts/chan_XAU_F.png) |
+| MSFT | Microsoft 微软 | 1S | 2026-06-01 | 1 | 466.32001 | CONSOLIDATION | [chart](charts/chan_MSFT.png) |
 | RB=F | RBOB Gasoline Jul 26 | 3B | 2026-06-02 | 1 | 3.0460999 | CONSOLIDATION | [chart](charts/chan_RB_F.png) |
 | TN=F | Ultra 10-Year U.S. Treasury Not | 3S | 2026-06-02 | 1 | 112.64062 | CONSOLIDATION | [chart](charts/chan_TN_F.png) |
 | UB=F | Ultra U.S. Treasury Bond Future | 3S | 2026-06-02 | 1 | 115.71875 | CONSOLIDATION | [chart](charts/chan_UB_F.png) |
