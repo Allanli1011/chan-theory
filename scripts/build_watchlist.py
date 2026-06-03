@@ -93,6 +93,17 @@ MAG7 = [
     ("TSLA", "Tesla 特斯拉"),
 ]
 
+# A股/港股指数 ETF 代理: Yahoo 对这些指数本身(.SS/.SZ)覆盖不稳, 但对应 ETF 可稳定取数,
+# 用 ETF 跟踪相应指数 (实测均可取到~1200根日线)。
+CN_ETF_PROXIES = [
+    ("510050.SS", "上证50ETF(华夏·跟踪上证50)"),
+    ("510500.SS", "中证500ETF(南方·跟踪中证500)"),
+    ("512100.SS", "中证1000ETF(南方·跟踪中证1000)"),
+    ("159915.SZ", "创业板ETF(易方达·跟踪创业板指)"),
+    ("588000.SS", "科创50ETF(华夏·跟踪科创50)"),
+    ("513130.SS", "恒生科技ETF(华泰柏瑞·跟踪恒生科技)"),
+]
+
 _EXTRA_JUNK = ["trading se", "look-alik", "transaction pr"]
 
 # 经实测 Yahoo chart 端点不能稳定返回日线(常仅 1 根或 4xx)的代码: **直接排除, 不写入清单**。
@@ -183,6 +194,7 @@ def main() -> int:
     candidates = [(s, n, "期货(主流)" if args.futures == "mainstream" else "期货(标准连续)")
                   for s, n in futures_rows(args.futures)]
     candidates += [(s, n, "中国指数") for s, n in CN_INDICES]
+    candidates += [(s, n, "中国指数(ETF代理)") for s, n in CN_ETF_PROXIES]
     candidates += [(s, n, "美股七姐妹") for s, n in MAG7]
 
     added = 0
