@@ -1,9 +1,9 @@
 # Latest Yahoo Chan Signals
 
-- Generated UTC: 2026-06-03T08:10:16Z
+- Generated UTC: 2026-06-03T08:25:38Z
 - Date folder: 2026-06-03
-- Candidate symbols: 69
-- Symbols scanned: 69
+- Candidate symbols: 75
+- Symbols scanned: 75
 - New signal rows: 5
 - Products with new signals: 5
 
