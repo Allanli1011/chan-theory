@@ -23,12 +23,6 @@ The CSV contains one row per newly recognized `1B`, `2B`, `3B`, `1S`, `2S`, or
 `3S` signal. The chart directory contains one Chan-annotated chart per product
 that produced at least one new signal in the scan.
 
-Daily signal scans use `--zhongshu-mode same_level` by default. This is more
-responsive for third-class buy/sell points because a 3B/3S starts being watched
-after the initial three-unit zhongshu is established. The `extension` mode is
-still useful for higher-level structural summaries, but it can delay 3B/3S
-labels by continuing to absorb overlapping strokes into the same zhongshu.
-
 ## Yahoo Data Cache
 
 The workflow caches Yahoo daily chart CSVs under:
@@ -73,7 +67,6 @@ Useful options:
 --limit N                    Scan only the first N selected symbols.
 --plot-bars N                Number of latest daily bars shown in each chart.
 --run-date YYYY-MM-DD        Override the date folder name for backfills.
---zhongshu-mode same_level   Use same-level zhongshu decomposition for signals.
 --cache-dir PATH             Cache Yahoo chart CSVs in PATH.
 --cache-refresh-range 10d    Recent range to refresh when a cache file exists.
 --no-cache                   Disable chart caching.
