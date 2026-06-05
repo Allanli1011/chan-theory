@@ -42,10 +42,21 @@ def classify_trend(zhongshus: List[ZhongShu]) -> TrendType:
     return TrendType.CONSOLIDATION
 
 
-def _bsp(units, idx, kind, raws, reason, ratio=None) -> BuySellPoint:
+def _bsp(units, idx, kind, raws, reason, ratio=None,
+         ref_zs: ZhongShu | None = None) -> BuySellPoint:
     u = units[idx]
+    ref_kwargs = {}
+    if ref_zs is not None:
+        ref_kwargs = {
+            "ref_zs_idx": ref_zs.idx,
+            "ref_zs_zd": ref_zs.ZD,
+            "ref_zs_zg": ref_zs.ZG,
+            "ref_zs_raw_start": ref_zs.raw_start,
+            "ref_zs_raw_end": ref_zs.raw_end,
+        }
     return BuySellPoint(bsp_type=kind, raw_idx=u.raw_end, dt=raws[u.raw_end].dt,
-                        price=u.end_value, reason=reason, beichi_ratio=ratio)
+                        price=u.end_value, reason=reason, beichi_ratio=ratio,
+                        **ref_kwargs)
 
 
 def _relevant_zhongshu_for_beichi(zhongshus, a, c, going_up):
@@ -97,12 +108,24 @@ def _third_point_after_zhongshu(units: List, zs: ZhongShu):
             if u.direction is not Direction.DOWN:
                 continue
             if u.low > zs.ZG:
-                return i, BSPType.BUY3, "向上突破中枢后回抽不回中枢(>ZG=%.1f)" % zs.ZG
+                return (
+                    i,
+                    BSPType.BUY3,
+                    "向上突破中枢后回抽不回中枢(ZS%d, price>ZG=%.4g)" %
+                    (zs.idx, zs.ZG),
+                    zs,
+                )
             return None
         if u.direction is not Direction.UP:
             continue
         if u.high < zs.ZD:
-            return i, BSPType.SELL3, "向下跌破中枢后回抽不回中枢(<ZD=%.1f)" % zs.ZD
+            return (
+                i,
+                BSPType.SELL3,
+                "向下跌破中枢后反抽不回中枢(ZS%d, price<ZD=%.4g)" %
+                (zs.idx, zs.ZD),
+                zs,
+            )
         return None
     return None
 
@@ -169,8 +192,8 @@ def find_buy_sell_points(units: List, zhongshus: List[ZhongShu],
         third = _third_point_after_zhongshu(units, zs)
         if third is None:
             continue
-        pull, kind, reason = third
-        bsps.append(_bsp(units, pull, kind, raws, reason))
+        pull, kind, reason, ref_zs = third
+        bsps.append(_bsp(units, pull, kind, raws, reason, ref_zs=ref_zs))
 
     bsps.sort(key=lambda b: b.raw_idx)
     return bsps

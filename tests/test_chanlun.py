@@ -238,6 +238,31 @@ def test_third_class_points_scan_first_leave_and_pullback():
     raws = [RawKLine(i, i, 1, 1, 1, 1) for i in range(16)]
     bsps = find_buy_sell_points(units, [zs], FakeMacd({}), raws)
     assert [b.bsp_type for b in bsps] == [BSPType.BUY3]
+    assert bsps[0].price > bsps[0].ref_zs_zg
+    assert bsps[0].ref_zs_idx == 0
+    assert bsps[0].ref_zs_zd == pytest.approx(2)
+    assert bsps[0].ref_zs_zg == pytest.approx(9)
+
+
+def test_third_sell_points_are_below_reference_zhongshu():
+    units = [
+        _bi(Direction.DOWN, 0, 10, 0),
+        _bi(Direction.UP, 1, 0, 8),
+        _bi(Direction.DOWN, 2, 8, 1),
+        _bi(Direction.UP, 3, 1, 7),     # still inside zhongshu
+        _bi(Direction.DOWN, 4, 7, -3),  # first real leave
+        _bi(Direction.UP, 5, -3, -1),   # first pullback, does not re-enter
+    ]
+    zs = ZhongShu(elements=units[:3], ZG=8, ZD=1, GG=10, DD=0,
+                  direction=Direction.DOWN, raw_start=0, raw_end=5, idx=0)
+    raws = [RawKLine(i, i, 1, 1, 1, 1) for i in range(16)]
+    bsps = find_buy_sell_points(units, [zs], FakeMacd({}), raws)
+
+    assert [b.bsp_type for b in bsps] == [BSPType.SELL3]
+    assert bsps[0].price < bsps[0].ref_zs_zd
+    assert bsps[0].ref_zs_idx == 0
+    assert bsps[0].ref_zs_zd == pytest.approx(1)
+    assert bsps[0].ref_zs_zg == pytest.approx(8)
 
 
 def test_end_to_end(sample):

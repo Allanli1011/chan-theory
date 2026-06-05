@@ -298,6 +298,25 @@ def write_signal_outputs(scans: Sequence[SymbolScan], out_dir: Path,
                     "" if signal.beichi_ratio is None
                     else f"{float(signal.beichi_ratio):.6g}"
                 ),
+                "ref_zs_idx": (
+                    "" if signal.ref_zs_idx is None else signal.ref_zs_idx
+                ),
+                "ref_zs_zd": (
+                    "" if signal.ref_zs_zd is None
+                    else f"{float(signal.ref_zs_zd):.8g}"
+                ),
+                "ref_zs_zg": (
+                    "" if signal.ref_zs_zg is None
+                    else f"{float(signal.ref_zs_zg):.8g}"
+                ),
+                "ref_zs_raw_start": (
+                    "" if signal.ref_zs_raw_start is None
+                    else signal.ref_zs_raw_start
+                ),
+                "ref_zs_raw_end": (
+                    "" if signal.ref_zs_raw_end is None
+                    else signal.ref_zs_raw_end
+                ),
                 "chart_path": relpath(chart_path),
             })
 
@@ -314,7 +333,8 @@ def write_csv(path: Path, rows: Sequence[Dict]) -> None:
         "exchange", "full_exchange_name", "contract_kind", "signal",
         "signal_type", "side", "class", "signal_date", "signal_bar_age",
         "price", "latest_close", "trend", "bars", "bis", "bi_zhongshus",
-        "reason", "beichi_ratio", "chart_path",
+        "reason", "beichi_ratio", "ref_zs_idx", "ref_zs_zd", "ref_zs_zg",
+        "ref_zs_raw_start", "ref_zs_raw_end", "chart_path",
     ]
     with open(path, "w", encoding="utf-8-sig", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -346,15 +366,16 @@ def write_index(path: Path, rows: Sequence[Dict], skipped: Counter,
     if not rows:
         lines.append("No newly recognized Chan buy/sell points in this scan.")
     else:
-        lines.append("| Symbol | Name | Signal | Signal Date | Age | Price | Trend | Chart |")
-        lines.append("|---|---|---:|---:|---:|---:|---|---|")
+        lines.append("| Symbol | Name | Signal | Ref ZS | Signal Date | Age | Price | Trend | Chart |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|---|---|")
         for row in rows:
             name = str(row["short_name"]).replace("|", "/")[:48]
+            ref_zs = "" if row["ref_zs_idx"] == "" else f"ZS{row['ref_zs_idx']}"
             chart_link = os.path.relpath(
                 ROOT / row["chart_path"], path.parent).replace(os.sep, "/")
             lines.append(
                 f"| {row['symbol']} | {name} | {row['signal']} | "
-                f"{row['signal_date']} | {row['signal_bar_age']} | "
+                f"{ref_zs} | {row['signal_date']} | {row['signal_bar_age']} | "
                 f"{row['price']} | {row['trend']} | "
                 f"[chart]({chart_link}) |"
             )

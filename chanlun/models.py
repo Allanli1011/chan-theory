@@ -250,3 +250,8 @@ class BuySellPoint:
     price: float
     reason: str = ""           # 触发说明 (背驰/中枢突破回抽等)
     beichi_ratio: Optional[float] = None  # 背驰力度比 (MACD面积之比), 若适用
+    ref_zs_idx: Optional[int] = None
+    ref_zs_zd: Optional[float] = None
+    ref_zs_zg: Optional[float] = None
+    ref_zs_raw_start: Optional[int] = None
+    ref_zs_raw_end: Optional[int] = None

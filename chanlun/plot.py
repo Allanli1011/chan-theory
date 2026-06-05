@@ -98,10 +98,15 @@ def plot_analysis(ana, start: int = 0, end: Optional[int] = None,
     dea = ana.macd.dea[start:end]
     hist = ana.macd.macd[start:end]
     hist_colors = ["red" if h >= 0 else "green" for h in hist]
+    # DIF/DEA/柱单位相同(柱=2*(DIF-DEA)), 必须共用同一根 y 轴, 否则 mplfinance 的
+    # secondary_y='auto' 会把 DIF、DEA 拆到不同刻度的两根轴上, 导致白黄线的视觉交叉
+    # 与红绿柱翻色(真实 DIF=DEA 处)对不上。secondary_y=False 强制三者同轴。
     aps = [
-        mpf.make_addplot(dif, panel=1, color="white", width=0.8, ylabel="MACD"),
-        mpf.make_addplot(dea, panel=1, color="yellow", width=0.8),
-        mpf.make_addplot(hist, panel=1, type="bar", color=hist_colors, width=0.7),
+        mpf.make_addplot(dif, panel=1, color="white", width=0.8, ylabel="MACD",
+                         secondary_y=False),
+        mpf.make_addplot(dea, panel=1, color="yellow", width=0.8, secondary_y=False),
+        mpf.make_addplot(hist, panel=1, type="bar", color=hist_colors, width=0.7,
+                         secondary_y=False),
     ]
 
     mc = mpf.make_marketcolors(up="red", down="green", edge="inherit",
@@ -160,12 +165,19 @@ def plot_analysis(ana, start: int = 0, end: Optional[int] = None,
         ax.add_patch(Rectangle((x0, z.ZD), w, z.ZG - z.ZD, fill=True,
                                facecolor="#ff990033", edgecolor="#ffaa00",
                                linewidth=1.2, zorder=3))
+        ax.annotate(f"ZS{z.idx}", (x0, z.ZG),
+                    textcoords="offset points", xytext=(2, 2),
+                    ha="left", va="bottom", color="#ffcc66", fontsize=8,
+                    zorder=6)
 
     # 买卖点标注
     for b in ana.bsps:
         if not visible(b.raw_idx):
             continue
         label, color, sign = _BSP_STYLE[b.bsp_type]
+        ref_idx = getattr(b, "ref_zs_idx", None)
+        if ref_idx is not None:
+            label = f"{label}\nZS{ref_idx}"
         x = pos(b.raw_idx)
         ax.scatter([x], [b.price], marker="o", s=28, color=color, zorder=6,
                    edgecolors="white", linewidths=0.5)
