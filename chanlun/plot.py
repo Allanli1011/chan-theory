@@ -178,12 +178,14 @@ def plot_analysis(ana, start: int = 0, end: Optional[int] = None,
         ref_idx = getattr(b, "ref_zs_idx", None)
         if ref_idx is not None:
             label = f"{label}\nZS{ref_idx}"
+        offset = 22 if ref_idx is not None else 12
+        va = "bottom" if sign > 0 else "top"
         x = pos(b.raw_idx)
         ax.scatter([x], [b.price], marker="o", s=28, color=color, zorder=6,
                    edgecolors="white", linewidths=0.5)
         ax.annotate(label, (x, b.price),
-                    textcoords="offset points", xytext=(0, sign * 12),
-                    ha="center", color=color, fontsize=9, fontweight="bold",
+                    textcoords="offset points", xytext=(0, sign * offset),
+                    ha="center", va=va, color=color, fontsize=9, fontweight="bold",
                     zorder=7)
 
     ax.legend(loc="upper left", fontsize=9, facecolor="#202020",
