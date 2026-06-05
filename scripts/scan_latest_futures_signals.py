@@ -404,7 +404,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--force-refresh", action="store_true")
     parser.add_argument("--only-standard-continuous", action="store_true")
-    parser.add_argument("--zhongshu-mode", default="extension",
+    parser.add_argument("--zhongshu-mode", default="same_level",
                         choices=["extension", "same_level"])
     parser.add_argument("--max-signal-age-bars", type=int, default=20,
                         help="0 disables the recent-age filter")

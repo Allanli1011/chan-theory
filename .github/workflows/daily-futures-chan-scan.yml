@@ -60,6 +60,7 @@ jobs:
             --max-signal-age-bars 20 \
             --cache-dir data/yahoo_chart_cache \
             --cache-refresh-range 10d \
+            --zhongshu-mode same_level \
             --run-date "$RUN_DATE"
 
       - name: Upload generated scan results
