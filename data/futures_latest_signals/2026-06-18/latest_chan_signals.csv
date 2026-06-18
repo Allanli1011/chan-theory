@@ -1,0 +1,3 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-06-18T02:02:17Z,2026-06-18,BTC=F,"Bitcoin Futures,Jun-2026",,,continuous,2S,SELL2,SELL,2,2026-06-15,3,67360,64500,CONSOLIDATION,1261,73,12,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-06-18/charts/chan_BTC_F.png
+2026-06-18T02:02:17Z,2026-06-18,HG=F,Copper Jul 26,,,continuous,2S,SELL2,SELL,2,2026-06-17,1,6.5139999,6.4004998,CONSOLIDATION,1259,86,12,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-06-18/charts/chan_HG_F.png
