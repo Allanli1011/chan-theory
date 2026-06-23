@@ -1,0 +1,2 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-06-23T01:32:20Z,2026-06-23,KE=F,"KC HRW Wheat Futures,Jul-2026",,,continuous,2S,SELL2,SELL,2,2026-06-18,1,657.25,642.75,CONSOLIDATION,1255,83,11,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-06-23/charts/chan_KE_F.png
