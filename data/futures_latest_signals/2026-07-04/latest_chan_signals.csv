@@ -1,0 +1,3 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-07-04T01:09:41Z,2026-07-02,510050.SS,上证50ETF(华夏·跟踪上证50),,,other,1B,BUY1,BUY,1,2026-07-01,1,0,3.003,CONSOLIDATION,1210,70,7,下跌趋势背驰(后笔绿柱面积更小),-0,,,,,,data/futures_latest_signals/2026-07-04/charts/chan_510050_SS.png
+2026-07-04T01:09:41Z,2026-07-02,512100.SS,中证1000ETF(南方·跟踪中证1000),,,other,1B,BUY1,BUY,1,2026-07-01,1,0,3.4909999,CONSOLIDATION,1210,65,11,下跌趋势背驰(后笔绿柱面积更小),-0,,,,,,data/futures_latest_signals/2026-07-04/charts/chan_512100_SS.png
