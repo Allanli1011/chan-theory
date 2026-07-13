@@ -1,0 +1,779 @@
+//@version=6
+// =============================================================================
+// 缠论 Chan Theory —— chan-theory (Python) 的 TradingView Pine 移植
+//
+// 与仓库 chanlun/ 包逐模块对应:
+//   f_merge         <- cmerge.py    包含处理(合并K线)          课17/62
+//   f_fractals      <- fractal.py   顶/底分型                  课62
+//   f_buildBis      <- bi.py        笔(走势腿跟踪, min_dist)   课62/65
+//   f_buildSegments <- segment.py   线段(特征序列+缺口两情形)  课65/67
+//   f_zhongshus     <- zhongshu.py  走势中枢(公共重叠/同级别)  课17/18
+//   f_findBsps      <- signals.py   MACD背驰 + 一/二/三类买卖点 课17/24
+//
+// 实现方式: 每根K线把 high/low/MACD柱 存入数组, 仅在最后一根K线上
+// 重跑整条流水线并绘图 (笔=蓝色折线, 线段=黄色折线, 中枢=橙框, 买卖点=标签)。
+// =============================================================================
+indicator("缠论 Chan Theory (笔/线段/中枢/买卖点)", "缠论", overlay = true,
+     max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_polylines_count = 100)
+
+// ============================== 输入 ==============================
+grpA = "算法参数 (与 Python 版一致)"
+biMinDist   = input.int(4, "笔最小间距 (标准笔=4, 新笔=3)", minval = 3, maxval = 6, group = grpA)
+beichiRatio = input.float(0.9, "背驰面积比阈值 beichi_ratio", minval = 0.1, maxval = 1.0, step = 0.05, group = grpA)
+zsModeStr   = input.string("中枢延伸 extension", "中枢模式 zhongshu_mode", options = ["中枢延伸 extension", "同级别分解 same_level"], group = grpA)
+maxBars     = input.int(3000, "最大分析K线数", minval = 300, maxval = 9000, group = grpA)
+onlyConfirm = input.bool(false, "仅在K线收盘后更新", group = grpA)
+enableAlert = input.bool(true, "新买卖点触发 alert()", group = grpA)
+
+grpM = "MACD (背驰力度, 课24)"
+macdFast = input.int(12, "快线 EMA", minval = 2, group = grpM)
+macdSlow = input.int(26, "慢线 EMA", minval = 3, group = grpM)
+macdSig  = input.int(9,  "信号 EMA", minval = 2, group = grpM)
+
+grpD = "显示"
+showFx    = input.bool(false, "分型标记", group = grpD)
+showBi    = input.bool(true,  "笔", group = grpD)
+showSeg   = input.bool(true,  "线段", group = grpD)
+showBiZs  = input.bool(true,  "笔中枢", group = grpD)
+showSegZs = input.bool(false, "线段中枢", group = grpD)
+showBsp   = input.bool(true,  "买卖点", group = grpD)
+showTable = input.bool(true,  "摘要面板", group = grpD)
+
+colBi    = input.color(#2962FF, "笔颜色",     group = grpD, inline = "c1")
+colSeg   = input.color(#F9A825, "线段颜色",   group = grpD, inline = "c1")
+colBiZs  = input.color(#FF6D00, "笔中枢",     group = grpD, inline = "c2")
+colSegZs = input.color(#8E24AA, "线段中枢",   group = grpD, inline = "c2")
+colBuy   = input.color(#00897B, "买点",       group = grpD, inline = "c3")
+colSell  = input.color(#D50000, "卖点",       group = grpD, inline = "c3")
+
+zsExtension = zsModeStr == "中枢延伸 extension"
+
+// ============================== 数据结构 ==============================
+// 对应 models.py (方向/分型/笔/线段/中枢/买卖点)
+type FxT
+    int   kind      // 1=顶分型  -1=底分型
+    int   mIdx      // 中心(极值)合并K线下标
+    float hi        // 中心合并K线 high
+    float lo        // 中心合并K线 low
+    int   rawIdx    // 极值对应的原始K线下标
+
+type BiT
+    int   dir       // 1=向上  -1=向下
+    int   mStart    // 起点分型中心合并K线下标
+    int   mEnd
+    int   rawStart  // 起点原始K线下标
+    int   rawEnd
+    float v0        // 起点分型极值
+    float v1        // 终点分型极值
+    float hi        // max(v0, v1)
+    float lo        // min(v0, v1)
+
+type SegT
+    int  dir
+    int  b0         // 首笔下标 (笔序列中)
+    int  b1         // 末笔下标
+    bool done       // 是否已确认终结
+
+type ZsT
+    float zg        // 中枢上沿 = min(元素高点)
+    float zd        // 中枢下沿 = max(元素低点)
+    float gg        // 区间最高
+    float dd        // 区间最低
+    int   rawStart
+    int   rawEnd
+    int   e0        // 首元素在单元序列中的下标
+    int   e1        // 末元素下标
+
+type BspT
+    int    typ      // 1/2/3=一/二/三买  -1/-2/-3=一/二/三卖
+    int    rawIdx
+    float  price
+    float  ratio    // 背驰力度比 (na=不适用)
+    string reason
+
+// ============================== 工具函数 ==============================
+f_fxVal(FxT f) =>
+    f.kind == 1 ? f.hi : f.lo
+
+f_moreExtreme(FxT a, FxT b) =>
+    a.kind == 1 ? f_fxVal(a) > f_fxVal(b) : f_fxVal(a) < f_fxVal(b)
+
+f_bspName(int typ) =>
+    typ == 1 ? "一买" : typ == 2 ? "二买" : typ == 3 ? "三买" :
+     typ == -1 ? "一卖" : typ == -2 ? "二卖" : "三卖"
+
+// ---------- 1. 包含处理 (cmerge.py) ----------
+// 向上合并取高高, 向下取低低; 方向由已合并序列最后两根决定。
+f_merge(array<float> hiA, array<float> loA) =>
+    mHi = array.new_float()
+    mLo = array.new_float()
+    mB  = array.new_int()   // 覆盖的原始K线起点 (elements 连续)
+    mE  = array.new_int()   // 覆盖的原始K线终点
+    lastDir = 1
+    n = array.size(hiA)
+    if n > 0
+        for i = 0 to n - 1
+            hV = array.get(hiA, i)
+            lV = array.get(loA, i)
+            m = array.size(mHi)
+            if m == 0
+                array.push(mHi, hV)
+                array.push(mLo, lV)
+                array.push(mB, i)
+                array.push(mE, i)
+                continue
+            lh = array.get(mHi, m - 1)
+            ll = array.get(mLo, m - 1)
+            included = (lh >= hV and ll <= lV) or (hV >= lh and lV <= ll)
+            if not included
+                if hV > lh
+                    lastDir := 1
+                else if hV < lh
+                    lastDir := -1
+                array.push(mHi, hV)
+                array.push(mLo, lV)
+                array.push(mB, i)
+                array.push(mE, i)
+                continue
+            dir = m >= 2 ? (lh > array.get(mHi, m - 2) ? 1 : -1) : lastDir
+            if dir == 1
+                array.set(mHi, m - 1, math.max(lh, hV))
+                array.set(mLo, m - 1, math.max(ll, lV))
+            else
+                array.set(mHi, m - 1, math.min(lh, hV))
+                array.set(mLo, m - 1, math.min(ll, lV))
+            array.set(mE, m - 1, i)
+            lastDir := dir
+    [mHi, mLo, mB, mE]
+
+// ---------- 2. 分型 (fractal.py) ----------
+f_fractals(array<float> mHi, array<float> mLo, array<int> mB, array<int> mE, array<float> hiA, array<float> loA) =>
+    fxs = array.new<FxT>()
+    m = array.size(mHi)
+    if m >= 3
+        for i = 1 to m - 2
+            ah = array.get(mHi, i - 1)
+            al = array.get(mLo, i - 1)
+            bh = array.get(mHi, i)
+            bl = array.get(mLo, i)
+            ch = array.get(mHi, i + 1)
+            cl = array.get(mLo, i + 1)
+            kind = 0
+            if bh > ah and bh > ch and bl > al and bl > cl
+                kind := 1
+            else if bh < ah and bh < ch and bl < al and bl < cl
+                kind := -1
+            if kind != 0
+                // 极值对应的原始K线 (顶取区间内最高 high, 底取最低 low; 平值取先出现者)
+                rb = array.get(mB, i)
+                re = array.get(mE, i)
+                best = rb
+                if kind == 1
+                    bestV = array.get(hiA, rb)
+                    if re > rb
+                        for j = rb + 1 to re
+                            v = array.get(hiA, j)
+                            if v > bestV
+                                bestV := v
+                                best := j
+                else
+                    bestV = array.get(loA, rb)
+                    if re > rb
+                        for j = rb + 1 to re
+                            v = array.get(loA, j)
+                            if v < bestV
+                                bestV := v
+                                best := j
+                array.push(fxs, FxT.new(kind, i, bh, bl, best))
+    fxs
+
+// ---------- 3. 笔 (bi.py) ----------
+// 走势腿跟踪: 同类分型保留更极端者; 异类且间距足够则确认成笔;
+// 间距不足但突破上上个同类端点时回退替换 (假转折)。
+f_buildBis(array<FxT> fxs, int minDist) =>
+    bis = array.new<BiT>()
+    nf = array.size(fxs)
+    if nf >= 2
+        eps = array.new<FxT>()
+        array.push(eps, array.get(fxs, 0))
+        for i = 1 to nf - 1
+            fx = array.get(fxs, i)
+            last = array.get(eps, array.size(eps) - 1)
+            if fx.kind == last.kind
+                if f_moreExtreme(fx, last)
+                    array.set(eps, array.size(eps) - 1, fx)
+                continue
+            gap = fx.mIdx - last.mIdx
+            validPrice = last.kind == -1 ? f_fxVal(fx) > f_fxVal(last) : f_fxVal(fx) < f_fxVal(last)
+            if gap >= minDist and validPrice
+                array.push(eps, fx)
+                continue
+            if array.size(eps) >= 2 and f_moreExtreme(fx, array.get(eps, array.size(eps) - 2))
+                array.pop(eps)
+                if f_moreExtreme(fx, array.get(eps, array.size(eps) - 1))
+                    array.set(eps, array.size(eps) - 1, fx)
+        if array.size(eps) >= 2
+            for i = 0 to array.size(eps) - 2
+                a = array.get(eps, i)
+                b = array.get(eps, i + 1)
+                if a.kind == b.kind
+                    continue
+                va = f_fxVal(a)
+                vb = f_fxVal(b)
+                array.push(bis, BiT.new(a.kind == -1 ? 1 : -1, a.mIdx, b.mIdx, a.rawIdx, b.rawIdx, va, vb, math.max(va, vb), math.min(va, vb)))
+    bis
+
+// ---------- 4. 线段 (segment.py) ----------
+// 特征序列非包含处理 (课65 顺序原则)。返回 [低点数组, 高点数组, 贡献极值的原笔下标]
+f_standardize(array<int> fOi, array<float> fLo, array<float> fHi, bool up) =>
+    sLo = array.new_float()
+    sHi = array.new_float()
+    sKey = array.new_int()
+    nf = array.size(fOi)
+    if nf > 0
+        for i = 0 to nf - 1
+            lo = array.get(fLo, i)
+            hi = array.get(fHi, i)
+            oi = array.get(fOi, i)
+            m = array.size(sLo)
+            if m == 0
+                array.push(sLo, lo)
+                array.push(sHi, hi)
+                array.push(sKey, oi)
+                continue
+            lh = array.get(sHi, m - 1)
+            ll = array.get(sLo, m - 1)
+            lk = array.get(sKey, m - 1)
+            included = (lh >= hi and ll <= lo) or (hi >= lh and lo <= ll)
+            if included
+                if up
+                    array.set(sHi, m - 1, math.max(lh, hi))
+                    array.set(sLo, m - 1, math.max(ll, lo))
+                    array.set(sKey, m - 1, lh >= hi ? lk : oi)
+                else
+                    array.set(sHi, m - 1, math.min(lh, hi))
+                    array.set(sLo, m - 1, math.min(ll, lo))
+                    array.set(sKey, m - 1, ll <= lo ? lk : oi)
+            else
+                array.push(sLo, lo)
+                array.push(sHi, hi)
+                array.push(sKey, oi)
+    [sLo, sHi, sKey]
+
+// 标准特征序列中 t 处是否为终结分型 (向上线段看顶分型, 向下看底分型)
+f_isFractal(array<float> sLo, array<float> sHi, int t, bool up) =>
+    res = false
+    if t > 0 and t < array.size(sLo) - 1
+        ah = array.get(sHi, t - 1)
+        al = array.get(sLo, t - 1)
+        bh = array.get(sHi, t)
+        bl = array.get(sLo, t)
+        ch = array.get(sHi, t + 1)
+        cl = array.get(sLo, t + 1)
+        res := up ? (bh > ah and bh > ch and bl > al and bl > cl) : (bh < ah and bh < ch and bl < al and bl < cl)
+    res
+
+f_hasTerminalFractal(array<float> sLo, array<float> sHi, bool up) =>
+    found = false
+    m = array.size(sLo)
+    if m >= 3
+        for t = 1 to m - 2
+            if f_isFractal(sLo, sHi, t, up)
+                found := true
+                break
+    found
+
+// 课67 第二种情况 (有缺口) 的有界确认:
+// 极值之后先创同向新极值 => 分型作废; 先出现反向线段特征序列的反向分型 => 确认终结。
+f_confirmCase2(array<BiT> bis, int peakBi, bool segUp) =>
+    n = array.size(bis)
+    peak = array.get(bis, peakBi)
+    fOi = array.new_int()
+    fLo = array.new_float()
+    fHi = array.new_float()
+    confirmed = false
+    if peakBi + 1 <= n - 1
+        for j = peakBi + 1 to n - 1
+            bj = array.get(bis, j)
+            if segUp and bj.hi > peak.hi
+                break
+            if not segUp and bj.lo < peak.lo
+                break
+            if bj.dir == (segUp ? 1 : -1)
+                array.push(fOi, j)
+                array.push(fLo, bj.lo)
+                array.push(fHi, bj.hi)
+                [sLo, sHi, sKey] = f_standardize(fOi, fLo, fHi, not segUp)
+                if f_hasTerminalFractal(sLo, sHi, not segUp)
+                    confirmed := true
+                    break
+    confirmed
+
+// 找线段终结笔下标; 未破坏返回 -1。(课67 两种情况)
+f_findBreak(array<BiT> bis, int start, bool segUp) =>
+    n = array.size(bis)
+    fOi = array.new_int()
+    fLo = array.new_float()
+    fHi = array.new_float()
+    if start + 1 <= n - 1
+        for j = start + 1 to n - 1
+            bj = array.get(bis, j)
+            if (bj.dir == 1) != segUp
+                array.push(fOi, j)
+                array.push(fLo, bj.lo)
+                array.push(fHi, bj.hi)
+    result = -1
+    if array.size(fOi) >= 3
+        [sLo, sHi, sKey] = f_standardize(fOi, fLo, fHi, segUp)
+        m = array.size(sLo)
+        if m >= 3
+            for t = 1 to m - 2
+                if not f_isFractal(sLo, sHi, t, segUp)
+                    continue
+                peakBi = array.get(sKey, t)
+                segEnd = peakBi - 1
+                if segEnd < start + 2      // 线段至少三笔
+                    continue
+                gap = segUp ? array.get(sHi, t - 1) < array.get(sLo, t) : array.get(sLo, t - 1) > array.get(sHi, t)
+                if not gap
+                    result := segEnd       // 第一种情况: 无缺口直接确认
+                    break
+                if f_confirmCase2(bis, peakBi, segUp)
+                    result := segEnd       // 第二种情况: 有界反向分型确认
+                    break
+    result
+
+f_buildSegments(array<BiT> bis) =>
+    segs = array.new<SegT>()
+    n = array.size(bis)
+    start = 0
+    stop = false
+    while start + 2 < n and not stop
+        d = array.get(bis, start).dir
+        e = f_findBreak(bis, start, d == 1)
+        if e == -1
+            stop := true
+        else
+            array.push(segs, SegT.new(d, start, e, true))
+            start := e + 1
+    if start < n   // 末段(可能未完成), 保留以表达当下走势方向
+        array.push(segs, SegT.new(array.get(bis, start).dir, start, n - 1, false))
+    segs
+
+// ---------- 5. 走势中枢 (zhongshu.py) ----------
+// 公共重叠判据: 首三个单元有重叠即确立; extension 模式下持续吞入仍保持公共重叠的单元。
+f_zhongshus(array<float> uHi, array<float> uLo, array<int> uRawS, array<int> uRawE, bool extension) =>
+    zss = array.new<ZsT>()
+    n = array.size(uHi)
+    i = 0
+    while i + 2 < n
+        zg = math.min(array.get(uHi, i), array.get(uHi, i + 1), array.get(uHi, i + 2))
+        zd = math.max(array.get(uLo, i), array.get(uLo, i + 1), array.get(uLo, i + 2))
+        if zg > zd
+            gg = math.max(array.get(uHi, i), array.get(uHi, i + 1), array.get(uHi, i + 2))
+            dd = math.min(array.get(uLo, i), array.get(uLo, i + 1), array.get(uLo, i + 2))
+            j = i + 3
+            cont = true
+            while extension and j < n and cont
+                nzg = math.min(zg, array.get(uHi, j))
+                nzd = math.max(zd, array.get(uLo, j))
+                if nzg > nzd
+                    zg := nzg
+                    zd := nzd
+                    gg := math.max(gg, array.get(uHi, j))
+                    dd := math.min(dd, array.get(uLo, j))
+                    j += 1
+                else
+                    cont := false
+            array.push(zss, ZsT.new(zg, zd, gg, dd, array.get(uRawS, i), array.get(uRawE, j - 1), i, j - 1))
+            i := j
+        else
+            i += 1
+    zss
+
+// 走势类型 (课17): 中枢依次抬高=上涨, 依次降低=下跌, 否则盘整
+f_classifyTrend(array<ZsT> zss) =>
+    n = array.size(zss)
+    res = 0
+    if n > 1
+        allUp = true
+        allDown = true
+        broke = false
+        for i = 0 to n - 2
+            a = array.get(zss, i)
+            b = array.get(zss, i + 1)
+            if b.zd > a.zg
+                allDown := false
+            else if b.zg < a.zd
+                allUp := false
+            else
+                broke := true
+                break
+        res := broke ? 0 : allUp ? 1 : allDown ? -1 : 0
+    res
+
+// ---------- 6. MACD 面积与买卖点 (macd.py + signals.py) ----------
+// posP/negP: 红柱/绿柱面积前缀和 (长度 nRaw+1)
+f_area(array<float> posP, array<float> negP, int i0, int i1, bool up) =>
+    nRaw = array.size(posP) - 1
+    a = math.max(0, i0)
+    b = math.min(nRaw - 1, i1)
+    res = 0.0
+    if b >= a
+        res := up ? array.get(posP, b + 1) - array.get(posP, a) : array.get(negP, b + 1) - array.get(negP, a)
+    res
+
+// 一类点后的首次反向走势, 再首次同向回抽/反抽
+f_secondPoint(array<BiT> bis, int k) =>
+    n = array.size(bis)
+    firstDir = array.get(bis, k).dir
+    oppSeen = false
+    res = -1
+    if k + 1 <= n - 1
+        for j = k + 1 to n - 1
+            bj = array.get(bis, j)
+            if not oppSeen
+                if bj.dir == -firstDir
+                    oppSeen := true
+                continue
+            if bj.dir == firstDir
+                res := j
+                break
+    res
+
+// 第三类买卖点 (中枢定理三): 离开中枢后首次回抽不重回 [ZD, ZG]
+f_thirdPoint(array<BiT> bis, ZsT zs) =>
+    n = array.size(bis)
+    start = zs.e1 + 1
+    leaveIdx = -1
+    leaveUp = false
+    if start <= n - 1
+        for i = start to n - 1
+            u = array.get(bis, i)
+            if u.dir == 1 and u.hi > zs.zg and u.v1 > zs.zg
+                leaveIdx := i
+                leaveUp := true
+                break
+            if u.dir == -1 and u.lo < zs.zd and u.v1 < zs.zd
+                leaveIdx := i
+                leaveUp := false
+                break
+    pull = -1
+    typ = 0
+    if leaveIdx != -1 and leaveIdx + 1 <= n - 1
+        for i = leaveIdx + 1 to n - 1
+            u = array.get(bis, i)
+            if leaveUp
+                if u.dir != -1
+                    continue
+                if u.lo > zs.zg
+                    pull := i
+                    typ := 3
+                break
+            else
+                if u.dir != 1
+                    continue
+                if u.hi < zs.zd
+                    pull := i
+                    typ := -3
+                break
+    [pull, typ]
+
+f_findBsps(array<BiT> bis, array<ZsT> zss, array<float> posP, array<float> negP, float ratioThr) =>
+    bsps = array.new<BspT>()
+    n = array.size(bis)
+    // ---- 第一类: 相邻同向笔背驰 (后笔创新极值且相关中枢存在且面积明显更小) ----
+    sigK = array.new_int()
+    sigUp = array.new_bool()
+    sigR = array.new_float()
+    if n >= 3
+        for k = 2 to n - 1
+            c = array.get(bis, k)
+            a = array.get(bis, k - 2)
+            if a.dir != c.dir
+                continue
+            up = c.dir == 1
+            newExtreme = up ? c.v1 > a.v1 : c.v1 < a.v1
+            if not newExtreme
+                continue
+            rel = false
+            for z in zss
+                if a.rawStart <= z.rawEnd and z.rawStart <= c.rawEnd and (up ? c.v1 > z.zg : c.v1 < z.zd)
+                    rel := true
+                    break
+            if not rel
+                continue
+            areaA = f_area(posP, negP, a.rawStart, a.rawEnd, up)
+            areaC = f_area(posP, negP, c.rawStart, c.rawEnd, up)
+            if areaA > 0 and areaC < areaA * ratioThr
+                array.push(sigK, k)
+                array.push(sigUp, up)
+                array.push(sigR, areaC / areaA)
+    // 去重: 同方向连续背驰只保留价格最极端的一个
+    fpK = array.new_int()
+    fpUp = array.new_bool()
+    fpR = array.new_float()
+    ns = array.size(sigK)
+    if ns > 0
+        for s = 0 to ns - 1
+            k = array.get(sigK, s)
+            up = array.get(sigUp, s)
+            r = array.get(sigR, s)
+            m = array.size(fpK)
+            if m > 0 and array.get(fpUp, m - 1) == up
+                pk = array.get(fpK, m - 1)
+                better = up ? array.get(bis, k).v1 > array.get(bis, pk).v1 : array.get(bis, k).v1 < array.get(bis, pk).v1
+                if better
+                    array.set(fpK, m - 1, k)
+                    array.set(fpR, m - 1, r)
+            else
+                array.push(fpK, k)
+                array.push(fpUp, up)
+                array.push(fpR, r)
+    // ---- 一类点 + 第二类 (一类点后首次回抽不破前极值) ----
+    nf = array.size(fpK)
+    if nf > 0
+        for s = 0 to nf - 1
+            k = array.get(fpK, s)
+            up = array.get(fpUp, s)
+            r = array.get(fpR, s)
+            u = array.get(bis, k)
+            if up
+                array.push(bsps, BspT.new(-1, u.rawEnd, u.v1, r, "上涨趋势背驰(后笔红柱面积更小)"))
+            else
+                array.push(bsps, BspT.new(1, u.rawEnd, u.v1, r, "下跌趋势背驰(后笔绿柱面积更小)"))
+            pull = f_secondPoint(bis, k)
+            if pull != -1
+                pu = array.get(bis, pull)
+                if not up and pu.v1 > u.v1
+                    array.push(bsps, BspT.new(2, pu.rawEnd, pu.v1, na, "一买后首次回抽不破前低"))
+                else if up and pu.v1 < u.v1
+                    array.push(bsps, BspT.new(-2, pu.rawEnd, pu.v1, na, "一卖后首次反抽不破前高"))
+    // ---- 第三类 ----
+    for z in zss
+        [pull, typ] = f_thirdPoint(bis, z)
+        if typ != 0
+            pu = array.get(bis, pull)
+            array.push(bsps, BspT.new(typ, pu.rawEnd, pu.v1, na, typ == 3 ? "向上突破中枢后回抽不回中枢" : "向下跌破中枢后反抽不回中枢"))
+    // 按 raw_idx 稳定排序 (对应 Python bsps.sort)
+    nb = array.size(bsps)
+    if nb > 1
+        for i = 1 to nb - 1
+            key = array.get(bsps, i)
+            j = i - 1
+            moving = true
+            while moving and j >= 0
+                if array.get(bsps, j).rawIdx > key.rawIdx
+                    array.set(bsps, j + 1, array.get(bsps, j))
+                    j -= 1
+                else
+                    moving := false
+            array.set(bsps, j + 1, key)
+    bsps
+
+// ============================== 数据采集 ==============================
+// 只收集窗口内的 high/low/close; MACD 在最后一根K线上从窗口首值重算,
+// 与 macd.py 的回退实现一致 (EMA 以分析序列首值为种子)。
+alphaF = 2.0 / (macdFast + 1)
+alphaS = 2.0 / (macdSlow + 1)
+alphaG = 2.0 / (macdSig + 1)
+
+var array<float> rHi = array.new_float()
+var array<float> rLo = array.new_float()
+var array<float> rCl = array.new_float()
+if bar_index > last_bar_index - maxBars
+    array.push(rHi, high)
+    array.push(rLo, low)
+    array.push(rCl, close)
+    if array.size(rHi) > maxBars   // 实时盘中新增K线时保持窗口长度
+        array.shift(rHi)
+        array.shift(rLo)
+        array.shift(rCl)
+
+// ============================== 主流程与绘制 ==============================
+var polyline plBi = na
+var polyline plSeg = na
+var array<box> gBoxes = array.new<box>()
+var array<label> gLabels = array.new<label>()
+var table tbl = table.new(position.top_right, 2, 8, bgcolor = color.new(color.black, 78), border_width = 1, border_color = color.new(color.gray, 65))
+var int lastAlertBar = -1
+
+runNow = barstate.islast and (not onlyConfirm or barstate.isconfirmed or barstate.ishistory)
+if runNow
+    // ---- 清除上一轮绘制 ----
+    if not na(plBi)
+        polyline.delete(plBi)
+        plBi := na
+    if not na(plSeg)
+        polyline.delete(plSeg)
+        plSeg := na
+    if array.size(gBoxes) > 0
+        for bx in gBoxes
+            box.delete(bx)
+    array.clear(gBoxes)
+    if array.size(gLabels) > 0
+        for lb in gLabels
+            label.delete(lb)
+    array.clear(gLabels)
+    table.clear(tbl, 0, 0, 1, 7)
+
+    nRaw = array.size(rHi)
+    base = last_bar_index - (nRaw - 1)   // 原始下标 i -> 图表 bar_index = base + i
+
+    if nRaw >= 30
+        // ---- 流水线 (对应 analyzer.py::run) ----
+        [mHi, mLo, mB, mE] = f_merge(rHi, rLo)
+        fxs = f_fractals(mHi, mLo, mB, mE, rHi, rLo)
+        bis = f_buildBis(fxs, biMinDist)
+        segs = f_buildSegments(bis)
+
+        // 笔级中枢
+        bUHi = array.new_float()
+        bULo = array.new_float()
+        bURs = array.new_int()
+        bURe = array.new_int()
+        for b in bis
+            array.push(bUHi, b.hi)
+            array.push(bULo, b.lo)
+            array.push(bURs, b.rawStart)
+            array.push(bURe, b.rawEnd)
+        zsBi = f_zhongshus(bUHi, bULo, bURs, bURe, zsExtension)
+
+        // 线段级中枢 (仅已完成线段)
+        sUHi = array.new_float()
+        sULo = array.new_float()
+        sURs = array.new_int()
+        sURe = array.new_int()
+        for sg in segs
+            if not sg.done
+                continue
+            segHi = array.get(bis, sg.b0).hi
+            segLo = array.get(bis, sg.b0).lo
+            for bi2 = sg.b0 to sg.b1
+                segHi := math.max(segHi, array.get(bis, bi2).hi)
+                segLo := math.min(segLo, array.get(bis, bi2).lo)
+            array.push(sUHi, segHi)
+            array.push(sULo, segLo)
+            array.push(sURs, array.get(bis, sg.b0).rawStart)
+            array.push(sURe, array.get(bis, sg.b1).rawEnd)
+        zsSeg = f_zhongshus(sUHi, sULo, sURs, sURe, zsExtension)
+
+        // MACD 柱 (macd.py 回退实现: EMA 以窗口首值为种子, 柱 = 2*(DIF-DEA))
+        rHist = array.new_float()
+        float eF = na
+        float eS = na
+        float dV = na
+        for i = 0 to nRaw - 1
+            cV = array.get(rCl, i)
+            eF := na(eF) ? cV : alphaF * cV + (1 - alphaF) * eF
+            eS := na(eS) ? cV : alphaS * cV + (1 - alphaS) * eS
+            dNow = eF - eS
+            dV := na(dV) ? dNow : alphaG * dNow + (1 - alphaG) * dV
+            array.push(rHist, 2.0 * (dNow - dV))
+
+        // MACD 红/绿柱面积前缀和
+        posP = array.new_float()
+        negP = array.new_float()
+        array.push(posP, 0.0)
+        array.push(negP, 0.0)
+        for i = 0 to nRaw - 1
+            hv = array.get(rHist, i)
+            array.push(posP, array.get(posP, i) + (hv > 0 ? hv : 0.0))
+            array.push(negP, array.get(negP, i) + (hv < 0 ? -hv : 0.0))
+
+        bsps = f_findBsps(bis, zsBi, posP, negP, beichiRatio)
+        trend = f_classifyTrend(zsBi)
+
+        // ---- 绘制: 分型 ----
+        if showFx
+            nFx = array.size(fxs)
+            if nFx > 0
+                for i = math.max(0, nFx - 200) to nFx - 1
+                    fx = array.get(fxs, i)
+                    array.push(gLabels, label.new(base + fx.rawIdx, f_fxVal(fx), "",
+                         xloc = xloc.bar_index,
+                         style = fx.kind == 1 ? label.style_triangledown : label.style_triangleup,
+                         color = color.new(color.gray, 40), size = size.tiny))
+
+        // ---- 绘制: 笔 (蓝色折线) ----
+        if showBi and array.size(bis) > 0
+            pts = array.new<chart.point>()
+            b0 = array.get(bis, 0)
+            array.push(pts, chart.point.from_index(base + b0.rawStart, b0.v0))
+            for b in bis
+                array.push(pts, chart.point.from_index(base + b.rawEnd, b.v1))
+            plBi := polyline.new(pts, curved = false, closed = false, xloc = xloc.bar_index, line_color = colBi, line_width = 1)
+
+        // ---- 绘制: 线段 (黄色折线) ----
+        if showSeg and array.size(segs) > 0
+            pts = array.new<chart.point>()
+            s0 = array.get(segs, 0)
+            array.push(pts, chart.point.from_index(base + array.get(bis, s0.b0).rawStart, array.get(bis, s0.b0).v0))
+            for sg in segs
+                eb = array.get(bis, sg.b1)
+                array.push(pts, chart.point.from_index(base + eb.rawEnd, eb.v1))
+            plSeg := polyline.new(pts, curved = false, closed = false, xloc = xloc.bar_index, line_color = colSeg, line_width = 2)
+
+        // ---- 绘制: 中枢 (矩形 [ZD, ZG]) ----
+        if showBiZs
+            nz = array.size(zsBi)
+            if nz > 0
+                for i = math.max(0, nz - 120) to nz - 1
+                    z = array.get(zsBi, i)
+                    array.push(gBoxes, box.new(base + z.rawStart, z.zg, base + z.rawEnd, z.zd,
+                         border_color = colBiZs, border_width = 2, bgcolor = color.new(colBiZs, 88), xloc = xloc.bar_index))
+        if showSegZs
+            nz = array.size(zsSeg)
+            if nz > 0
+                for i = math.max(0, nz - 60) to nz - 1
+                    z = array.get(zsSeg, i)
+                    array.push(gBoxes, box.new(base + z.rawStart, z.zg, base + z.rawEnd, z.zd,
+                         border_color = colSegZs, border_width = 2, bgcolor = color.new(colSegZs, 92), xloc = xloc.bar_index))
+
+        // ---- 绘制: 买卖点 ----
+        if showBsp
+            nb = array.size(bsps)
+            if nb > 0
+                for i = math.max(0, nb - 240) to nb - 1
+                    p = array.get(bsps, i)
+                    isBuy = p.typ > 0
+                    tip = p.reason + (na(p.ratio) ? "" : ", 力度比=" + str.tostring(p.ratio, "#.##"))
+                    array.push(gLabels, label.new(base + p.rawIdx, p.price, f_bspName(p.typ),
+                         xloc = xloc.bar_index,
+                         style = isBuy ? label.style_label_up : label.style_label_down,
+                         color = isBuy ? colBuy : colSell,
+                         textcolor = color.white, size = size.small, tooltip = tip))
+
+        // ---- 摘要面板 ----
+        if showTable
+            trendTxt = trend == 1 ? "上涨" : trend == -1 ? "下跌" : "盘整"
+            trendCol = trend == 1 ? colBuy : trend == -1 ? colSell : color.gray
+            txtCol = color.new(color.white, 10)
+            table.cell(tbl, 0, 0, "缠论", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 0, zsExtension ? "中枢延伸" : "同级别分解", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 0, 1, "走势类型", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 1, trendTxt, text_color = trendCol, text_size = size.small)
+            table.cell(tbl, 0, 2, "笔 / 线段", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 2, str.tostring(array.size(bis)) + " / " + str.tostring(array.size(segs)), text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 0, 3, "笔中枢 / 线段中枢", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 3, str.tostring(array.size(zsBi)) + " / " + str.tostring(array.size(zsSeg)), text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 0, 4, "买卖点", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 4, str.tostring(array.size(bsps)), text_color = txtCol, text_size = size.small)
+            if array.size(bsps) > 0
+                p = array.get(bsps, array.size(bsps) - 1)
+                agoN = last_bar_index - (base + p.rawIdx)
+                table.cell(tbl, 0, 5, "最新信号", text_color = txtCol, text_size = size.small)
+                table.cell(tbl, 1, 5, f_bspName(p.typ) + " (" + str.tostring(agoN) + "根前)",
+                     text_color = p.typ > 0 ? colBuy : colSell, text_size = size.small)
+
+        // ---- 新买卖点 alert() (创建警报时选"任何 alert() 函数调用") ----
+        if enableAlert and array.size(bsps) > 0
+            p = array.get(bsps, array.size(bsps) - 1)
+            absIdx = base + p.rawIdx
+            if absIdx >= last_bar_index - 3 and absIdx != lastAlertBar
+                lastAlertBar := absIdx
+                alert("缠论 " + f_bspName(p.typ) + " @ " + str.tostring(p.price) + (na(p.ratio) ? "" : " 力度比=" + str.tostring(p.ratio, "#.##")), alert.freq_once_per_bar)
+    else
+        if showTable
+            table.cell(tbl, 0, 0, "缠论", text_color = color.white, text_size = size.small)
+            table.cell(tbl, 1, 0, "K线不足(<30)", text_color = color.gray, text_size = size.small)

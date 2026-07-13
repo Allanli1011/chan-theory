@@ -111,6 +111,13 @@ for name, a in res.items():
 一买 @ 2025-04-08  价=169.21  下跌笔背驰(后笔绿柱面积更小) 力度比0.76
 ```
 
+## TradingView 指标版
+
+整条流水线另有 Pine Script v6 移植版 [`tradingview/chan_theory.pine`](tradingview/chan_theory.pine)，
+粘贴进 TradingView 的 Pine Editor 即可在任意品种/周期上直接绘制笔、线段、中枢与三类买卖点，
+并支持新买卖点 `alert()` 推送。参数与本仓库 Python 版一一对应，
+安装与差异说明见 [`tradingview/README.md`](tradingview/README.md)。
+
 ## 每日自动扫描自选清单 (GitHub Actions)
 
 仓库内置定时工作流 [`.github/workflows/daily-futures-chan-scan.yml`](.github/workflows/daily-futures-chan-scan.yml)，
