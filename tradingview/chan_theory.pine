@@ -748,22 +748,33 @@ if runNow
         if showTable
             trendTxt = trend == 1 ? "上涨" : trend == -1 ? "下跌" : "盘整"
             trendCol = trend == 1 ? colBuy : trend == -1 ? colSell : color.gray
+            // 近端走势: 最后两个笔中枢的相对位置 (抬高=上涨, 降低=下跌, 重叠=盘整)
+            nzT = array.size(zsBi)
+            recent = 0
+            if nzT >= 2
+                za = array.get(zsBi, nzT - 2)
+                zb = array.get(zsBi, nzT - 1)
+                recent := zb.zd > za.zg ? 1 : zb.zg < za.zd ? -1 : 0
+            recentTxt = nzT < 2 ? "中枢不足" : recent == 1 ? "上涨" : recent == -1 ? "下跌" : "盘整"
+            recentCol = nzT < 2 ? color.gray : recent == 1 ? colBuy : recent == -1 ? colSell : color.gray
             txtCol = color.new(color.white, 10)
             table.cell(tbl, 0, 0, "缠论", text_color = txtCol, text_size = size.small)
-            table.cell(tbl, 1, 0, zsExtension ? "中枢延伸" : "同级别分解", text_color = txtCol, text_size = size.small)
-            table.cell(tbl, 0, 1, "走势类型", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 0, "模式: " + (zsExtension ? "中枢延伸" : "同级别分解"), text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 0, 1, "整体走势 (全窗口)", text_color = txtCol, text_size = size.small)
             table.cell(tbl, 1, 1, trendTxt, text_color = trendCol, text_size = size.small)
-            table.cell(tbl, 0, 2, "笔 / 线段", text_color = txtCol, text_size = size.small)
-            table.cell(tbl, 1, 2, str.tostring(array.size(bis)) + " / " + str.tostring(array.size(segs)), text_color = txtCol, text_size = size.small)
-            table.cell(tbl, 0, 3, "笔中枢 / 线段中枢", text_color = txtCol, text_size = size.small)
-            table.cell(tbl, 1, 3, str.tostring(array.size(zsBi)) + " / " + str.tostring(array.size(zsSeg)), text_color = txtCol, text_size = size.small)
-            table.cell(tbl, 0, 4, "买卖点", text_color = txtCol, text_size = size.small)
-            table.cell(tbl, 1, 4, str.tostring(array.size(bsps)), text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 0, 2, "近端走势 (末两中枢)", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 2, recentTxt, text_color = recentCol, text_size = size.small)
+            table.cell(tbl, 0, 3, "笔 / 线段", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 3, str.tostring(array.size(bis)) + " / " + str.tostring(array.size(segs)), text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 0, 4, "笔中枢 / 线段中枢", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 4, str.tostring(array.size(zsBi)) + " / " + str.tostring(array.size(zsSeg)), text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 0, 5, "买卖点", text_color = txtCol, text_size = size.small)
+            table.cell(tbl, 1, 5, str.tostring(array.size(bsps)), text_color = txtCol, text_size = size.small)
             if array.size(bsps) > 0
                 p = array.get(bsps, array.size(bsps) - 1)
                 agoN = last_bar_index - (base + p.rawIdx)
-                table.cell(tbl, 0, 5, "最新信号", text_color = txtCol, text_size = size.small)
-                table.cell(tbl, 1, 5, f_bspName(p.typ) + " (" + str.tostring(agoN) + "根前)",
+                table.cell(tbl, 0, 6, "最新信号", text_color = txtCol, text_size = size.small)
+                table.cell(tbl, 1, 6, f_bspName(p.typ) + " (" + str.tostring(agoN) + "根前)",
                      text_color = p.typ > 0 ? colBuy : colSell, text_size = size.small)
 
         // ---- 新买卖点 alert() (创建警报时选"任何 alert() 函数调用") ----
