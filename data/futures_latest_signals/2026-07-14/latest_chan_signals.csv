@@ -1,3 +1,2 @@
 ﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
-2026-07-14T12:39:04Z,2026-07-14,ETH=F,Ethereum Jun 26,,,continuous,3S,SELL3,SELL,3,2026-07-13,1,1849.5,1802,CONSOLIDATION,1262,76,13,"向下跌破中枢后反抽不回中枢(ZS11, price<ZD=2227)",,11,2227,2390,1150,1232,data/futures_latest_signals/2026-07-14/charts/chan_ETH_F.png
-2026-07-14T12:39:04Z,2026-07-14,PA=F,Palladium Sep 26,,,continuous,2B,BUY2,BUY,2,2026-07-13,1,1242.7,1259.5,CONSOLIDATION,1258,112,16,一买后首次回抽不破前低,,,,,,,data/futures_latest_signals/2026-07-14/charts/chan_PA_F.png
+2026-07-14T13:04:07Z,2026-07-14,PA=F,Palladium Sep 26,,,continuous,2B,BUY2,BUY,2,2026-07-13,1,1242.7,1273,CONSOLIDATION,1258,112,16,一买后首次回抽不破前低,,,,,,,data/futures_latest_signals/2026-07-14/charts/chan_PA_F.png
