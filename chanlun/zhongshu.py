@@ -11,6 +11,12 @@
 中枢维持/破坏 (课18 中枢定理三): 某中枢的破坏 <=> 一个次级别走势离开中枢后,
 其后的次级别回抽不再重新回到中枢区间 [ZD, ZG] 内。
 
+级别升级两途径:
+  * 延伸升级 (课33): "中枢的延伸不能超过5段, 一旦出现6段的延伸, 加上形成中枢
+    本身那三段, 就构成更大级别的中枢了" —— 即元素达 9 段, 标记 upgraded;
+  * 中枢扩展 (课29/36): 两个都已走出来的相邻同级别中枢, 区间 [ZD,ZG] 相互重叠
+    (即不满足趋势排列), 合并为更高一级中枢 —— 见 find_expansions。
+
 本实现对"次级别走势"既支持笔(笔中枢), 也支持线段(线段中枢)。
 """
 from __future__ import annotations
@@ -65,8 +71,53 @@ def find_zhongshus(units: Sequence, level: str = "bi",
                 direction=elems[0].direction,
                 raw_start=elems[0].raw_start, raw_end=elems[-1].raw_end,
                 level=level, idx=len(zss),
+                upgraded=len(elems) >= 9,   # 3段成枢+延伸6段 => 更大级别 (课33)
             ))
             i = j  # 从离开中枢的单元继续搜索下一中枢
         else:
             i += 1
     return zss
+
+
+def find_expansions(zss: List[ZhongShu], level: str = "bi") -> List[ZhongShu]:
+    """中枢扩展 (课29/36): 相邻同级别中枢合并为更高一级中枢。
+
+    课36: "中枢扩展的定义是在两个中枢都完全走出来的情况下定义的";
+    课29 给出最弱情形: 背驰后的反弹仅触及前中枢 DD, 即把该中枢"变成一个级别上
+    的扩展"。本实现取可操作判据: 相邻两个中枢的区间 [ZD,ZG] 相互重叠
+    (即不满足趋势排列), 则发生扩展; 新中枢区间按课18公式作用于成员的波动区间:
+        ZG* = min(各成员 GG)   ZD* = max(各成员 DD)
+    连续重叠的中枢链会被吞入同一个扩展中枢 (须保持 ZG* > ZD*)。
+    返回的扩展中枢 elements 为成员中枢列表, expanded=True, 级别高于成员一级。
+    """
+    out: List[ZhongShu] = []
+    n = len(zss)
+    i = 0
+    while i + 1 < n:
+        a, b = zss[i], zss[i + 1]
+        overlap = b.ZD <= a.ZG and a.ZD <= b.ZG
+        zg, zd = min(a.GG, b.GG), max(a.DD, b.DD)
+        if not overlap or zg <= zd:
+            i += 1
+            continue
+        members = [a, b]
+        gg, dd = max(a.GG, b.GG), min(a.DD, b.DD)
+        j = i + 2
+        while j < n:
+            c = zss[j]
+            chain = c.ZD <= members[-1].ZG and members[-1].ZD <= c.ZG
+            nzg, nzd = min(zg, c.GG), max(zd, c.DD)
+            if not (chain and nzg > nzd):
+                break
+            members.append(c)
+            zg, zd = nzg, nzd
+            gg, dd = max(gg, c.GG), min(dd, c.DD)
+            j += 1
+        out.append(ZhongShu(
+            elements=members, ZG=zg, ZD=zd, GG=gg, DD=dd,
+            direction=members[0].direction,
+            raw_start=members[0].raw_start, raw_end=members[-1].raw_end,
+            level=level, idx=len(out), expanded=True,
+        ))
+        i = j
+    return out

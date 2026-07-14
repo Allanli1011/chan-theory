@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-背驰判断与三类买卖点 (课17/课24/课29 中枢定理三)。
+背驰判断与三类买卖点 (课17/课24/课27/课29 中枢定理三)。
 
 背驰 (课24): 相邻两段同向走势, 后段创新高/新低却力度(MACD柱面积: 向上看红、向下看绿)
-更弱, 即背驰。背驰必制造某级别买卖点(背驰-买卖点定理)。本实现以【笔】为走势单元,
-比较相邻同向笔(k-2 与 k)的 MACD 面积:后笔创新极值而面积明显变小即构成笔背驰。
+更弱, 即背驰。背驰必制造某级别买卖点(背驰-买卖点定理)。本实现以走势单元(笔或线段)
+比较相邻同向单元(k-2 与 k)的 MACD 面积: 后段创新极值而面积明显变小即构成背驰。
+
+趋势背驰与盘整背驰的区分 (课17/24/27):
+  * 趋势背驰: 背驰的关联中枢之前存在依次同向排列的前一中枢 (即处于趋势末端),
+    才构成严格的第一类买卖点;
+  * 盘整背驰: 关联中枢存在但其前无同向前中枢 —— 单独标注 (PZBUY/PZSELL),
+    不计入三类买卖点 (课27 用其判断盘整结束与历史性底部, 课29 讨论其转化)。
 
 三类买卖点 (课17/课24/中枢定理三):
   * 第一类: 趋势背驰导致的转折 —— 下跌背驰=一买(底), 上涨背驰=一卖(顶);
@@ -12,7 +18,7 @@
   * 第三类: 离开中枢的走势后, 次级别回抽不重新回到中枢区间 [ZD,ZG]
             (向上突破不回 ZG 之下 => 三买; 向下跌破不回 ZD 之上 => 三卖)。
 
-同向连续背驰会做去重, 仅保留一段趋势中最极端(最终)的那个一类点。
+同向连续背驰在各自类别内去重, 仅保留价格最极端(最终)的那个。
 """
 from __future__ import annotations
 
@@ -43,7 +49,8 @@ def classify_trend(zhongshus: List[ZhongShu]) -> TrendType:
 
 
 def _bsp(units, idx, kind, raws, reason, ratio=None,
-         ref_zs: ZhongShu | None = None) -> BuySellPoint:
+         ref_zs: ZhongShu | None = None, level: str = "bi",
+         src_raw_start: int | None = None) -> BuySellPoint:
     u = units[idx]
     ref_kwargs = {}
     if ref_zs is not None:
@@ -56,6 +63,7 @@ def _bsp(units, idx, kind, raws, reason, ratio=None,
         }
     return BuySellPoint(bsp_type=kind, raw_idx=u.raw_end, dt=raws[u.raw_end].dt,
                         price=u.end_value, reason=reason, beichi_ratio=ratio,
+                        level=level, src_raw_start=src_raw_start,
                         **ref_kwargs)
 
 
@@ -70,6 +78,20 @@ def _relevant_zhongshu_for_beichi(zhongshus, a, c, going_up):
         if not going_up and c.end_value < z.ZD:
             return z
     return None
+
+
+def _is_trend_beichi(zhongshus, z, going_up):
+    """背驰是否处于趋势末端 (课17/24/27)。
+
+    严格的第一类买卖点来自【趋势】背驰: 关联中枢 z 之前须有依次同向排列的
+    前一中枢 (上涨: z.ZD > 前中枢.ZG; 下跌: z.ZG < 前中枢.ZD)。
+    否则为【盘整】背驰。
+    """
+    zi = next((i for i, zz in enumerate(zhongshus) if zz is z), -1)
+    if zi <= 0:
+        return False
+    prev = zhongshus[zi - 1]
+    return (z.ZD > prev.ZG) if going_up else (z.ZG < prev.ZD)
 
 
 def _second_point_index(units: List, k: int) -> int | None:
@@ -130,15 +152,22 @@ def _third_point_after_zhongshu(units: List, zs: ZhongShu):
     return None
 
 
-def find_buy_sell_points(units: List, zhongshus: List[ZhongShu],
-                         macd: MacdHelper, raws: List[RawKLine],
-                         beichi_ratio: float = 0.9) -> List[BuySellPoint]:
-    """在给定走势单元(默认笔)上识别全部买卖点。"""
-    bsps: List[BuySellPoint] = []
-    n = len(units)
+def find_signals(units: List, zhongshus: List[ZhongShu],
+                 macd: MacdHelper, raws: List[RawKLine],
+                 beichi_ratio: float = 0.9, level: str = "bi"):
+    """在给定走势单元(笔或线段)上识别信号。
 
-    # ---- 第一类: 笔背驰 (相邻同向笔, 后笔创新极值且 MACD 面积更小) ----
-    raw_sigs = []  # (k, is_up, ratio)
+    返回 (bsps, pzbcs):
+      * bsps  —— 一/二/三类买卖点 (一类点要求趋势背驰, 课17/24/27);
+      * pzbcs —— 盘整背驰提示点 (PZBUY/PZSELL, 课24/27), 不属于三类买卖点。
+    """
+    bsps: List[BuySellPoint] = []
+    pzbcs: List[BuySellPoint] = []
+    n = len(units)
+    unit_name = "笔" if level == "bi" else "段"
+
+    # ---- 背驰扫描 (相邻同向单元, 后段创新极值且 MACD 面积更小) ----
+    raw_sigs = []  # (k, is_up, ratio, is_trend)
     for k in range(2, n):
         c, a = units[k], units[k - 2]
         if a.direction is not c.direction:
@@ -147,35 +176,53 @@ def find_buy_sell_points(units: List, zhongshus: List[ZhongShu],
         new_extreme = (c.end_value > a.end_value) if up else (c.end_value < a.end_value)
         if not new_extreme:
             continue
-        if _relevant_zhongshu_for_beichi(zhongshus, a, c, up) is None:
+        z = _relevant_zhongshu_for_beichi(zhongshus, a, c, up)
+        if z is None:
             continue
         area_a = macd.directional_area(a.raw_start, a.raw_end, up)
         area_c = macd.directional_area(c.raw_start, c.raw_end, up)
         if area_a > 0 and area_c < area_a * beichi_ratio:
-            raw_sigs.append((k, up, area_c / area_a))
+            raw_sigs.append((k, up, area_c / area_a,
+                             _is_trend_beichi(zhongshus, z, up)))
 
-    # 去重: 同方向连续背驰只保留最极端(价格最优)的一个
-    first_pts = []  # (k, is_up, ratio)
-    for k, up, ratio in raw_sigs:
-        if first_pts and first_pts[-1][1] == up:
-            pk = first_pts[-1][0]
-            better = (units[k].end_value > units[pk].end_value) if up \
-                else (units[k].end_value < units[pk].end_value)
-            if better:
-                first_pts[-1] = (k, up, ratio)
-        else:
-            first_pts.append((k, up, ratio))
+    # 各类别内去重: 同方向连续背驰只保留最极端(价格最优)的一个
+    def _dedup(sigs):
+        out = []  # (k, is_up, ratio)
+        for k, up, ratio in sigs:
+            if out and out[-1][1] == up:
+                pk = out[-1][0]
+                better = (units[k].end_value > units[pk].end_value) if up \
+                    else (units[k].end_value < units[pk].end_value)
+                if better:
+                    out[-1] = (k, up, ratio)
+            else:
+                out.append((k, up, ratio))
+        return out
 
+    trend_pts = _dedup([(k, up, r) for k, up, r, t in raw_sigs if t])
+    pz_pts = _dedup([(k, up, r) for k, up, r, t in raw_sigs if not t])
+
+    # ---- 第一类: 趋势背驰 ----
     first_idx = {}
-    for k, up, ratio in first_pts:
-        tag = "趋势背驰"
+    for k, up, ratio in trend_pts:
         if up:
             bsps.append(_bsp(units, k, BSPType.SELL1, raws,
-                             "上涨%s(后笔红柱面积更小)" % tag, ratio))
+                             "上涨趋势背驰(后%s红柱面积更小)" % unit_name, ratio,
+                             level=level, src_raw_start=units[k].raw_start))
         else:
             bsps.append(_bsp(units, k, BSPType.BUY1, raws,
-                             "下跌%s(后笔绿柱面积更小)" % tag, ratio))
+                             "下跌趋势背驰(后%s绿柱面积更小)" % unit_name, ratio,
+                             level=level, src_raw_start=units[k].raw_start))
         first_idx[k] = up
+
+    # ---- 盘整背驰: 单独标注, 不计入三类买卖点 (课24/27) ----
+    for k, up, ratio in pz_pts:
+        kind = BSPType.PZSELL if up else BSPType.PZBUY
+        pzbcs.append(_bsp(units, k, kind, raws,
+                          "%s盘整背驰(后%s%s柱面积更小)" % (
+                              "上涨" if up else "下跌", unit_name,
+                              "红" if up else "绿"), ratio,
+                          level=level, src_raw_start=units[k].raw_start))
 
     # ---- 第二类: 一类点后第一次回抽不破前极值 (买卖点定律一) ----
     for k, up in first_idx.items():
@@ -183,9 +230,11 @@ def find_buy_sell_points(units: List, zhongshus: List[ZhongShu],
         if pull is None:
             continue
         if not up and units[pull].end_value > units[k].end_value:
-            bsps.append(_bsp(units, pull, BSPType.BUY2, raws, "一买后首次回抽不破前低"))
+            bsps.append(_bsp(units, pull, BSPType.BUY2, raws,
+                             "一买后首次回抽不破前低", level=level))
         elif up and units[pull].end_value < units[k].end_value:
-            bsps.append(_bsp(units, pull, BSPType.SELL2, raws, "一卖后首次反抽不破前高"))
+            bsps.append(_bsp(units, pull, BSPType.SELL2, raws,
+                             "一卖后首次反抽不破前高", level=level))
 
     # ---- 第三类: 离开中枢后回抽不回中枢 (中枢定理三) ----
     for zs in zhongshus:
@@ -193,7 +242,16 @@ def find_buy_sell_points(units: List, zhongshus: List[ZhongShu],
         if third is None:
             continue
         pull, kind, reason, ref_zs = third
-        bsps.append(_bsp(units, pull, kind, raws, reason, ref_zs=ref_zs))
+        bsps.append(_bsp(units, pull, kind, raws, reason, ref_zs=ref_zs,
+                         level=level))
 
     bsps.sort(key=lambda b: b.raw_idx)
-    return bsps
+    pzbcs.sort(key=lambda b: b.raw_idx)
+    return bsps, pzbcs
+
+
+def find_buy_sell_points(units: List, zhongshus: List[ZhongShu],
+                         macd: MacdHelper, raws: List[RawKLine],
+                         beichi_ratio: float = 0.9) -> List[BuySellPoint]:
+    """兼容入口: 只返回三类买卖点 (见 find_signals)。"""
+    return find_signals(units, zhongshus, macd, raws, beichi_ratio)[0]

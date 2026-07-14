@@ -57,13 +57,20 @@ class TrendType(Enum):
 
 
 class BSPType(Enum):
-    """买卖点类型 (课17等)。缠论只有三类买卖点。"""
+    """买卖点类型 (课17等)。缠论只有三类买卖点。
+
+    PZBUY/PZSELL 是【盘整背驰】提示 (课24/27/29): 背驰的关联中枢之前没有
+    依次同向的前中枢, 即背驰发生在盘整而非趋势末端。它们不属于三类买卖点,
+    因此不进入 bsps 列表, 单独存放于 pzbcs。
+    """
     BUY1 = "一买"
     BUY2 = "二买"
     BUY3 = "三买"
     SELL1 = "一卖"
     SELL2 = "二卖"
     SELL3 = "三卖"
+    PZBUY = "盘背买"
+    PZSELL = "盘背卖"
 
     @property
     def is_buy(self) -> bool:
@@ -219,7 +226,7 @@ class ZhongShu:
         DD = min(各元素低点)   中枢区间最低
     要求 ZG > ZD (存在重叠) 方成立。
     """
-    elements: List[object]     # 构成中枢的笔或线段 (按时间顺序)
+    elements: List[object]     # 构成中枢的笔或线段 (按时间顺序); 扩展中枢的成员为中枢
     ZG: float
     ZD: float
     GG: float
@@ -229,6 +236,8 @@ class ZhongShu:
     raw_end: int
     level: str = "bi"          # 'bi'(笔中枢) 或 'seg'(线段中枢)
     idx: int = -1
+    upgraded: bool = False     # 延伸达9段(3+6), 已构成更大级别中枢 (课33)
+    expanded: bool = False     # 由相邻中枢扩展合并而来的更高级别中枢 (课29/36)
 
     @property
     def mid(self) -> float:
@@ -255,3 +264,5 @@ class BuySellPoint:
     ref_zs_zg: Optional[float] = None
     ref_zs_raw_start: Optional[int] = None
     ref_zs_raw_end: Optional[int] = None
+    level: str = "bi"                     # 信号级别: 'bi'(笔) 或 'seg'(线段)
+    src_raw_start: Optional[int] = None   # 背驰比较段C的起点原始K线 idx (区间套用, 课27)

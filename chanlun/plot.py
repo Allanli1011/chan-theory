@@ -69,6 +69,7 @@ _BSP_STYLE = {
     BSPType.BUY3: ("3B", "darkorange", -1),
     BSPType.SELL1: ("1S", "green", 1), BSPType.SELL2: ("2S", "seagreen", 1),
     BSPType.SELL3: ("3S", "darkgreen", 1),
+    BSPType.PZBUY: ("PZB", "hotpink", -1), BSPType.PZSELL: ("PZS", "cyan", 1),
 }
 
 
@@ -155,38 +156,64 @@ def plot_analysis(ana, start: int = 0, end: Optional[int] = None,
         ax.plot(xs, ys, color="#ffcc00", linewidth=2.0, alpha=0.95,
                 label="线段", zorder=5)
 
-    # 中枢: [ZD, ZG] 矩形 (实线), [DD, GG] 振幅范围 (虚线框)
+    # 中枢: [ZD, ZG] 矩形; 9段升级中枢加粗描红 (课33)
     for z in ana.bi_zhongshus:
         if not visible_range(z.raw_start, z.raw_end):
             continue
         x0 = pos(max(z.raw_start, start))
         x1 = pos(min(z.raw_end, end - 1))
         w = max(x1 - x0, 0.5)
+        upgraded = getattr(z, "upgraded", False)
         ax.add_patch(Rectangle((x0, z.ZD), w, z.ZG - z.ZD, fill=True,
-                               facecolor="#ff990033", edgecolor="#ffaa00",
-                               linewidth=1.2, zorder=3))
-        ax.annotate(f"ZS{z.idx}", (x0, z.ZG),
+                               facecolor="#ff990033",
+                               edgecolor="#ff5544" if upgraded else "#ffaa00",
+                               linewidth=2.0 if upgraded else 1.2, zorder=3))
+        tag = f"ZS{z.idx}" + ("↑9段" if upgraded else "")
+        ax.annotate(tag, (x0, z.ZG),
                     textcoords="offset points", xytext=(2, 2),
                     ha="left", va="bottom", color="#ffcc66", fontsize=8,
                     zorder=6)
 
-    # 买卖点标注
-    for b in ana.bsps:
-        if not visible(b.raw_idx):
+    # 中枢扩展 (课29/36): 更高一级中枢, 虚线框
+    for z in getattr(ana, "bi_zs_expansions", []):
+        if not visible_range(z.raw_start, z.raw_end):
             continue
+        x0 = pos(max(z.raw_start, start))
+        x1 = pos(min(z.raw_end, end - 1))
+        w = max(x1 - x0, 0.5)
+        ax.add_patch(Rectangle((x0, z.ZD), w, z.ZG - z.ZD, fill=False,
+                               edgecolor="#cc66ff", linewidth=1.4,
+                               linestyle="--", zorder=3))
+        ax.annotate(f"扩展{z.idx}", (x0, z.ZD),
+                    textcoords="offset points", xytext=(2, -10),
+                    ha="left", va="top", color="#cc99ff", fontsize=8, zorder=6)
+
+    # 买卖点标注: 笔级(圆点) + 盘整背驰(小圆) + 线段级(方块, 前缀"段")
+    def _draw_bsp(b, marker, size, prefix="", label_fontsize=9):
         label, color, sign = _BSP_STYLE[b.bsp_type]
+        label = prefix + label
         ref_idx = getattr(b, "ref_zs_idx", None)
         if ref_idx is not None:
             label = f"{label}\nZS{ref_idx}"
         offset = 22 if ref_idx is not None else 12
         va = "bottom" if sign > 0 else "top"
         x = pos(b.raw_idx)
-        ax.scatter([x], [b.price], marker="o", s=28, color=color, zorder=6,
+        ax.scatter([x], [b.price], marker=marker, s=size, color=color, zorder=6,
                    edgecolors="white", linewidths=0.5)
         ax.annotate(label, (x, b.price),
                     textcoords="offset points", xytext=(0, sign * offset),
-                    ha="center", va=va, color=color, fontsize=9, fontweight="bold",
-                    zorder=7)
+                    ha="center", va=va, color=color, fontsize=label_fontsize,
+                    fontweight="bold", zorder=7)
+
+    for b in ana.bsps:
+        if visible(b.raw_idx):
+            _draw_bsp(b, "o", 28)
+    for b in getattr(ana, "pzbcs", []):
+        if visible(b.raw_idx):
+            _draw_bsp(b, "o", 16, label_fontsize=8)
+    for b in getattr(ana, "seg_bsps", []) + getattr(ana, "seg_pzbcs", []):
+        if visible(b.raw_idx):
+            _draw_bsp(b, "s", 52, prefix="段", label_fontsize=10)
 
     ax.legend(loc="upper left", fontsize=9, facecolor="#202020",
               labelcolor="white", framealpha=0.6)

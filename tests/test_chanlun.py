@@ -16,8 +16,8 @@ from chanlun.models import (BSPType, Bi, BuySellPoint, Direction, Fractal,
                             ZhongShu)
 from chanlun.plot import plot_analysis
 from chanlun.segment import build_segments
-from chanlun.signals import classify_trend, find_buy_sell_points
-from chanlun.zhongshu import find_zhongshus
+from chanlun.signals import classify_trend, find_buy_sell_points, find_signals
+from chanlun.zhongshu import find_expansions, find_zhongshus
 from chanlun.macd import compute_macd, MacdHelper
 from chanlun.analyzer import ChanAnalyzer
 from scripts.analyze_yahoo_futures import (
@@ -163,6 +163,45 @@ def test_zhongshu_same_level_mode_does_not_extend():
     assert len(same_level[0].elements) == 3
 
 
+def test_zhongshu_extension_upgrade_at_nine_elements():
+    """延伸达9段(3段成枢+6段延伸)标记为更大级别中枢 (课33)。"""
+    units = []
+    for i in range(10):
+        if i % 2 == 0:
+            units.append(_bi(Direction.UP, i, 1, 9))
+        else:
+            units.append(_bi(Direction.DOWN, i, 9, 1))
+    zss = find_zhongshus(units, mode="extension")
+    assert len(zss) == 1
+    assert len(zss[0].elements) == 10
+    assert zss[0].upgraded
+
+    short = find_zhongshus(units[:8], mode="extension")
+    assert len(short) == 1 and not short[0].upgraded
+
+
+def test_zhongshu_expansion_merges_overlapping_neighbors():
+    """相邻区间重叠的同级别中枢扩展为更高一级中枢 (课29/36)。"""
+    def zs(zd, zg, dd, gg, rs, re, idx):
+        return ZhongShu(elements=[_bi(Direction.UP, idx, zd, zg)],
+                        ZG=zg, ZD=zd, GG=gg, DD=dd,
+                        direction=Direction.UP, raw_start=rs, raw_end=re, idx=idx)
+
+    a = zs(10, 12, 9, 13, 0, 5, 0)
+    b = zs(11, 14, 10, 15, 6, 10, 1)    # 与 a 区间重叠 -> 扩展
+    c = zs(20, 22, 19, 23, 11, 15, 2)   # 与 b 趋势排列 -> 不并入
+    exps = find_expansions([a, b, c])
+    assert len(exps) == 1
+    e = exps[0]
+    assert e.expanded
+    assert e.elements == [a, b]
+    assert e.ZG == pytest.approx(13)    # min(GG)
+    assert e.ZD == pytest.approx(10)    # max(DD)
+    assert e.GG == pytest.approx(15) and e.DD == pytest.approx(9)
+    assert e.raw_start == 0 and e.raw_end == 10
+    assert find_expansions([b, c]) == []
+
+
 def test_macd_shapes(sample):
     close = [r.close for r in sample]
     dif, dea, macd = compute_macd(close)
@@ -205,7 +244,8 @@ class FakeMacd:
         return self.areas.get((i0, i1, going_up), 0)
 
 
-def test_first_class_points_require_a_zhongshu_context():
+def test_single_zhongshu_beichi_is_pz_not_first_class():
+    """单一中枢的背驰是盘整背驰, 不构成一类买卖点 (课24/27)。"""
     units = [
         _bi(Direction.DOWN, 0, 10, 5),
         _bi(Direction.UP, 1, 5, 8),
@@ -220,8 +260,33 @@ def test_first_class_points_require_a_zhongshu_context():
 
     zs = ZhongShu(elements=units[:3], ZG=8, ZD=5, GG=10, DD=4,
                   direction=Direction.DOWN, raw_start=0, raw_end=5, idx=0)
-    bsps = find_buy_sell_points(units, [zs], macd, raws)
+    bsps, pzbcs = find_signals(units, [zs], macd, raws)
+    assert bsps == []
+    assert [b.bsp_type for b in pzbcs] == [BSPType.PZBUY]
+    assert pzbcs[0].src_raw_start == units[2].raw_start
+
+
+def test_trend_beichi_with_two_descending_zhongshus_is_first_class():
+    """趋势背驰: 关联中枢前存在依次同向的前中枢 -> 一类买点 (课17/24/27)。"""
+    filler = [_bi(Direction.DOWN, 0, 30, 20)]
+    z0 = ZhongShu(elements=filler, ZG=26, ZD=20, GG=30, DD=18,
+                  direction=Direction.DOWN, raw_start=0, raw_end=5, idx=0)
+    units = [
+        _bi(Direction.DOWN, 5, 16, 12),   # raw 10..11
+        _bi(Direction.UP, 6, 12, 13),     # raw 12..13
+        _bi(Direction.DOWN, 7, 13, 9),    # raw 14..15, 创新低且离开 z1
+    ]
+    z1 = ZhongShu(elements=[units[0]], ZG=14, ZD=10, GG=16, DD=9,
+                  direction=Direction.DOWN, raw_start=8, raw_end=13, idx=1)
+    macd = FakeMacd({
+        (units[0].raw_start, units[0].raw_end, False): 10,
+        (units[2].raw_start, units[2].raw_end, False): 4,
+    })
+    raws = [RawKLine(i, i, 1, 1, 1, 1) for i in range(16)]
+    bsps, pzbcs = find_signals(units, [z0, z1], macd, raws)
     assert [b.bsp_type for b in bsps] == [BSPType.BUY1]
+    assert pzbcs == []
+    assert bsps[0].src_raw_start == units[2].raw_start
 
 
 def test_third_class_points_scan_first_leave_and_pullback():
@@ -271,11 +336,135 @@ def test_end_to_end(sample):
     assert len(ana.bis) >= 3
     assert len(ana.fractals) >= len(ana.bis)
     # 买卖点 raw_idx 落在序列范围内
-    for b in ana.bsps:
+    for b in ana.bsps + ana.pzbcs + ana.seg_bsps + ana.seg_pzbcs:
         assert 0 <= b.raw_idx < len(ana.raws)
+    # 级别标注正确
+    assert all(b.level == "bi" for b in ana.bsps + ana.pzbcs)
+    assert all(b.level == "seg" for b in ana.seg_bsps + ana.seg_pzbcs)
+    # 盘整背驰只含 PZ 类型, 买卖点只含三类
+    assert all(b.bsp_type in {BSPType.PZBUY, BSPType.PZSELL} for b in ana.pzbcs)
+    assert all(b.bsp_type not in {BSPType.PZBUY, BSPType.PZSELL} for b in ana.bsps)
     # summary 不抛异常
     assert "缠论分析摘要" in ana.summary()
     assert all(s.completed for z in ana.seg_zhongshus for s in z.elements)
+    # 扩展中枢几何不变量
+    for e in ana.bi_zs_expansions + ana.seg_zs_expansions:
+        assert e.expanded and e.ZG > e.ZD and len(e.elements) >= 2
+
+
+def _load_aapl_daily():
+    """AAPL 日线 (仓库自带 data/AAPL.csv, ~1256 根), 用于需要足够长历史
+    才能在周线级别产生背驰信号的区间套测试 (420根合成样本重采样到周线
+    后仅剩数根笔, 不足以构成背驰上下文)。"""
+    import pandas as pd
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "..", "data", "AAPL.csv")
+    return pd.read_csv(path)
+
+
+def test_nest_refine_uses_right_edge_label_window():
+    """nest_refine 须按 pandas resample('W'/'ME') 的【右边界】标签语义取窗口:
+    粗K线 i 覆盖 (label[i-1], label[i]], 而不是 [label[i], label[i+1])。
+
+    构造: 周线 bar0 覆盖(-inf,01-08], bar1 覆盖(01-08,01-15]; 粗级别背驰段
+    [src_raw_start=0, raw_idx=1] 真实覆盖到 01-15 为止。细级别候选 01-05
+    落在该范围内应被选中; 01-16 落在下一周(bar2)范围外, 不应被选中。
+    若误按左边界处理 (旧实现), 会反过来漏掉01-05、错选01-16。
+    """
+    import pandas as pd
+
+    from chanlun.analyzer import nest_refine
+
+    class FakeAna:
+        def __init__(self, raws, bsps=None, pzbcs=None):
+            self.raws = raws
+            self.bsps = bsps or []
+            self.pzbcs = pzbcs or []
+
+    def rk(i, d):
+        return RawKLine(idx=i, dt=pd.Timestamp(d), open=1, high=1, low=1, close=1)
+
+    coarse = FakeAna([rk(0, "2023-01-08"), rk(1, "2023-01-15"), rk(2, "2023-01-22")])
+    coarse_bsp = BuySellPoint(BSPType.BUY1, raw_idx=1, dt=pd.Timestamp("2023-01-15"),
+                              price=1.0, src_raw_start=0)
+
+    fine_raws = [rk(i, d) for i, d in enumerate(
+        ["2023-01-02", "2023-01-05", "2023-01-09", "2023-01-16", "2023-01-20"])]
+    fine_in_window = BuySellPoint(BSPType.BUY1, raw_idx=1, dt=pd.Timestamp("2023-01-05"),
+                                  price=1.0, src_raw_start=0)
+    fine_out_of_window = BuySellPoint(BSPType.BUY1, raw_idx=3, dt=pd.Timestamp("2023-01-16"),
+                                      price=1.0, src_raw_start=2)
+    fine = FakeAna(fine_raws, bsps=[fine_in_window, fine_out_of_window])
+
+    picked = nest_refine(coarse, fine, coarse_bsp)
+    assert picked is fine_in_window
+
+
+def test_interval_nest_chain_is_time_consistent():
+    """区间套 (课27): 细级别背驰点须落在粗级别背驰段【真实覆盖的日期范围】内。
+
+    pandas resample('W') 默认右边界打标签(一周标为该周最后一天), 而非左边界;
+    这里显式按该周实际覆盖的日历日校验, 而不仅仅是弱化的下界检查, 用以覆盖
+    nest_refine 对右标签重采样数据的窗口计算是否正确 (而不是想当然按左边界处理)。
+    """
+    from chanlun.analyzer import interval_nest, resample
+    import pandas as pd
+
+    df = _load_aapl_daily()
+    weekly = resample(df, "W")
+    # 粗K线 i 实际覆盖的日历范围 = (前一周标签, 当前周标签]
+    week_labels = [pd.Timestamp(d) for d in weekly["date"]]
+
+    recs = interval_nest(df, {"日线": None, "周线": "W"})
+    assert isinstance(recs, list)
+    assert recs   # AAPL 周线上应产生至少一条链, 否则本测试没有覆盖到目标代码路径
+    checked_fine = 0
+    for rec in recs:
+        chain = rec["chain"]
+        assert chain[0][0] == "周线"
+        coarse_bsp = rec["bsp"]
+        assert coarse_bsp.bsp_type in {BSPType.BUY1, BSPType.SELL1,
+                                       BSPType.PZBUY, BSPType.PZSELL}
+        if len(chain) > 1:
+            name, fine_bsp = chain[1]
+            assert name == "日线"
+            assert fine_bsp.bsp_type.is_buy == coarse_bsp.bsp_type.is_buy
+            # 真实时间一致性: 细级别点须落在粗级别背驰段实际覆盖的周区间内
+            lo_i = coarse_bsp.src_raw_start - 1
+            lo = week_labels[lo_i] if lo_i >= 0 else None
+            hi = week_labels[coarse_bsp.raw_idx]
+            fine_dt = pd.Timestamp(fine_bsp.dt)
+            if lo is not None:
+                assert fine_dt > lo
+            assert fine_dt <= hi
+            checked_fine += 1
+    assert checked_fine > 0
+
+
+def test_nest_bi_in_seg_api(sample):
+    # 级内区间套 API 可用
+    ana = ChanAnalyzer(sample).run()
+    pairs = ana.nest_bi_in_seg()
+    for sb, fb in pairs:
+        assert sb.level == "seg"
+        if fb is not None:
+            assert fb.level == "bi"
+            assert sb.src_raw_start <= fb.raw_idx <= sb.raw_idx
+            assert fb.bsp_type.is_buy == sb.bsp_type.is_buy
+
+
+def test_interval_nest_accepts_non_date_column_name():
+    """interval_nest 的日期列探测须与 from_dataframe 支持的列名一致
+    (date/datetime/time/trade_date), 且探测到的列要真正传给 resample(),
+    不能仍旧硬编码 'date' 导致重采样 KeyError。"""
+    from chanlun.analyzer import interval_nest
+
+    df = _load_aapl_daily().rename(columns={"date": "datetime"})
+    assert "date" not in df.columns
+    recs = interval_nest(df, {"日线": None, "周线": "W"})
+    assert isinstance(recs, list)
+    assert recs
 
 
 def test_buy_sell_points_have_valid_types(sample):
