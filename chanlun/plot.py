@@ -123,6 +123,25 @@ def plot_analysis(ana, start: int = 0, end: Optional[int] = None,
                          title=title, warn_too_much_data=10 ** 7)
     ax = axes[0]
 
+    # mplfinance 对蜡烛图价格轴几乎不留边距(紧贴窗口最高/最低价), 而买卖点标签
+    # 用"offset points"往上/下偏移标注: 若信号价恰好是窗口极值(常见, 因为背驰点
+    # 本就多在阶段高低点), 偏移后的文字会落到价格子图(ax)的矩形范围之外 ——
+    # 一旦越界, 会被绘制顺序更晚、背景不透明的下方MACD子图直接盖住而不可见
+    # (两个子图是独立Axes, 互不裁剪, 但后画的子图背景会覆盖先画的溢出内容)。
+    # 因此按像素精确换算: 预留足够容纳【多个标签叠放】(同一点上笔级/线段级/
+    # 盘整背驰等不同信号恰好重合时会依次错开摆放, 见下方 label_stack) 所需
+    # 的纵向空间, 而不是只留一个粗略的百分比空档。
+    y0, y1 = ax.get_ylim()
+    fig.canvas.draw()  # 确保 get_window_extent 能拿到实际像素尺寸
+    bbox_px = ax.get_window_extent(renderer=fig.canvas.get_renderer())
+    max_stack_pts = 120  # 预留够 4~5 层叠放标签(含两行的 ref_zs 标签)的纵向点数
+    pad_data = 0.0
+    if bbox_px.height > 0:
+        px_per_pt = fig.dpi / 72.0
+        pad_data = (max_stack_pts * px_per_pt) * (y1 - y0) / bbox_px.height
+    pad = max((y1 - y0) * 0.03, pad_data)
+    ax.set_ylim(y0 - pad, y1 + pad)
+
     def pos(raw_idx):  # 原始下标 -> 子图横坐标
         return raw_idx - start
 
@@ -188,16 +207,29 @@ def plot_analysis(ana, start: int = 0, end: Optional[int] = None,
                     textcoords="offset points", xytext=(2, -10),
                     ha="left", va="top", color="#cc99ff", fontsize=8, zorder=6)
 
-    # 买卖点标注: 笔级(圆点) + 盘整背驰(小圆) + 线段级(方块, 前缀"段")
-    def _draw_bsp(b, marker, size, prefix="", label_fontsize=9):
+    # 买卖点标注: 笔级(圆点) + 盘整背驰(小圆) + 线段级(方块, 前缀"段")。
+    # 不同级别/类型的信号可能落在同一根笔的端点上(如笔级一买恰好也是线段级
+    # 盘整背驰的锚点), 若都用固定偏移量会在同一位置叠字、变得不可读; 这里按
+    # (横坐标, 方向) 累加已占用的偏移量, 让同侧的后续标签依次错开摆放。
+    label_stack: dict = {}
+
+    def _draw_bsp(b, marker, size, prefix="", label_fontsize=9, gap=12):
         label, color, sign = _BSP_STYLE[b.bsp_type]
         label = prefix + label
         ref_idx = getattr(b, "ref_zs_idx", None)
         if ref_idx is not None:
             label = f"{label}\nZS{ref_idx}"
-        offset = 22 if ref_idx is not None else 12
-        va = "bottom" if sign > 0 else "top"
+        # gap 需盖过标记本身的半径, 否则大号标记(如线段级方块)会和文字重叠
+        base_offset = (gap + 10) if ref_idx is not None else gap
         x = pos(b.raw_idx)
+        key = (round(x), sign)
+        stacked = label_stack.get(key, 0)
+        # 封顶: 与上方留白预留的 max_stack_pts 对应, 避免极端情况下(多个信号
+        # 恰好同点)无限叠加把文字重新推出价格子图范围。带 ref_zs 的标签是
+        # 两行文字("类型\nZS{idx}"), 实际占用高度明显大于单行, 增量需相应更大。
+        label_stack[key] = min(stacked + (34 if ref_idx is not None else 18), 90)
+        offset = base_offset + stacked
+        va = "bottom" if sign > 0 else "top"
         ax.scatter([x], [b.price], marker=marker, s=size, color=color, zorder=6,
                    edgecolors="white", linewidths=0.5)
         ax.annotate(label, (x, b.price),
@@ -213,7 +245,7 @@ def plot_analysis(ana, start: int = 0, end: Optional[int] = None,
             _draw_bsp(b, "o", 16, label_fontsize=8)
     for b in getattr(ana, "seg_bsps", []) + getattr(ana, "seg_pzbcs", []):
         if visible(b.raw_idx):
-            _draw_bsp(b, "s", 52, prefix="段", label_fontsize=10)
+            _draw_bsp(b, "s", 52, prefix="段", label_fontsize=10, gap=20)
 
     ax.legend(loc="upper left", fontsize=9, facecolor="#202020",
               labelcolor="white", framealpha=0.6)
