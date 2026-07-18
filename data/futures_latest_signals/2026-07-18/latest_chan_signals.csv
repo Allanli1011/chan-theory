@@ -1,0 +1,2 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-07-18T00:57:42Z,2026-07-17,CC=F,Cocoa Sep 26,,,continuous,3B,BUY3,BUY,3,2026-07-16,1,5216,5610,CONSOLIDATION,1257,100,12,"向上突破中枢后回抽不回中枢(ZS11, price>ZG=4199)",,11,3694,4199,1210,1241,data/futures_latest_signals/2026-07-18/charts/chan_CC_F.png
