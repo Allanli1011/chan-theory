@@ -20,17 +20,9 @@
 indicator("缠论 Chan Theory (笔/线段/中枢/买卖点)", "缠论", overlay = true,
      max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_polylines_count = 100)
 
-// bar_index 历史缓冲区: 笔/线段/中枢/买卖点用 chart.point.from_index / box.new /
-// label.new 在 xloc.bar_index 模式下把绘图对象锚定到"最大分析K线数"根之前的
-// K线上。Pine 会按静态分析自动决定 bar_index 的可回溯历史缓冲区大小, 但它推断
-// 不出脚本会回溯多远(因为回溯深度取决于运行时输入 maxBars, 不是编译期常量);
-// 若不显式声明, 缓冲区可能小于用户设置的"最大分析K线数", 导致报错
-// "requested historical offset (N) is beyond the historical buffer's limit"
-// 并使指标整体停止显示。max_bars_back() 的第一个参数必须是【用户自己声明的
-// 标识符】, 不能直接传内置的 bar_index (会报 CE10164); 第二个参数(缓冲区
-// 大小)平台硬顶 5000, 所以下面 maxBars 输入的上限也同步设为 5000。
-barIdxRef = bar_index
-max_bars_back(barIdxRef, 5000)
+// 说明: 笔/线段/中枢/买卖点的绘图对象改用 xloc.bar_time(见下方数据采集与
+// 绘制段落的注释) 定位, 不依赖 Pine 的 bar_index 历史缓冲区, 因此这里不需要
+// (也不应该需要) max_bars_back() 声明。
 
 // ============================== 输入 ==============================
 grpA = "算法参数 (与 Python 版一致)"
@@ -688,30 +680,40 @@ alphaG = 2.0 / (macdSig + 1)
 var array<float> rHi = array.new_float()
 var array<float> rLo = array.new_float()
 var array<float> rCl = array.new_float()
+var array<int> rTime = array.new_int()
 var int lastCollectedBar = -1
 // 关键: 最后一根(可能未收盘)K线每来一个 tick 脚本都会重跑一次。若不判断
-// "是否已是同一根K线", 每个 tick 都会 push 一条记录, 使 rHi/rLo/rCl 的长度
-// 远快于真实K线数增长; 下面 base = last_bar_index - (nRaw-1) 的换算前提
+// "是否已是同一根K线", 每个 tick 都会 push 一条记录, 使 rHi/rLo/rCl/rTime 的
+// 长度远快于真实K线数增长; 下面 base = last_bar_index - (nRaw-1) 的换算前提
 // (数组一条记录对应一根K线) 被打破后 base 会算出偏小甚至负数, 后续所有
 // base + rawIdx 的绘图调用会引用不存在的K线下标而报运行时错误、指标整体
 // 停止显示 —— 这正是"运行几根新K线后突然出错"的根因。修法: 同一根K线的
 // 后续 tick 只原地更新最后一条记录, 只有换到新的 bar_index 才真正 push。
+// rTime 记录每根K线的真实时间戳, 供下方绘图改用 xloc.bar_time 定位 ——
+// xloc.bar_index 依赖 Pine 的历史缓冲区(编译期静态推断, 猜不出运行时输入
+// maxBars 需要回溯多深, max_bars_back() 实测也未必能纠正), 越过约3000根
+// 就报 "requested historical offset...beyond the historical buffer's limit"
+// 并使指标停止显示; 而 xloc.bar_time 直接用我们自己存的时间戳做坐标, 完全
+// 不走该缓冲区, 从根上避免这个报错。
 if bar_index > last_bar_index - maxBars
     if bar_index != lastCollectedBar
         array.push(rHi, high)
         array.push(rLo, low)
         array.push(rCl, close)
+        array.push(rTime, time)
         lastCollectedBar := bar_index
         if array.size(rHi) > maxBars   // 实时盘中新增K线时保持窗口长度
             array.shift(rHi)
             array.shift(rLo)
             array.shift(rCl)
+            array.shift(rTime)
     else
         nCollected = array.size(rHi)
         if nCollected > 0
             array.set(rHi, nCollected - 1, high)
             array.set(rLo, nCollected - 1, low)
             array.set(rCl, nCollected - 1, close)
+            array.set(rTime, nCollected - 1, time)
 
 // ============================== 主流程与绘制 ==============================
 var polyline plBi = na
@@ -811,8 +813,8 @@ if runNow
             if nFx > 0
                 for i = math.max(0, nFx - 150) to nFx - 1
                     fx = array.get(fxs, i)
-                    array.push(gLabels, label.new(base + fx.rawIdx, f_fxVal(fx), "",
-                         xloc = xloc.bar_index,
+                    array.push(gLabels, label.new(array.get(rTime, fx.rawIdx), f_fxVal(fx), "",
+                         xloc = xloc.bar_time,
                          style = fx.kind == 1 ? label.style_triangledown : label.style_triangleup,
                          color = color.new(color.gray, 40), size = size.tiny))
 
@@ -820,20 +822,20 @@ if runNow
         if showBi and array.size(bis) > 0
             pts = array.new<chart.point>()
             b0 = array.get(bis, 0)
-            array.push(pts, chart.point.from_index(base + b0.rawStart, b0.v0))
+            array.push(pts, chart.point.from_time(array.get(rTime, b0.rawStart), b0.v0))
             for b in bis
-                array.push(pts, chart.point.from_index(base + b.rawEnd, b.v1))
-            plBi := polyline.new(pts, curved = false, closed = false, xloc = xloc.bar_index, line_color = colBi, line_width = 1)
+                array.push(pts, chart.point.from_time(array.get(rTime, b.rawEnd), b.v1))
+            plBi := polyline.new(pts, curved = false, closed = false, xloc = xloc.bar_time, line_color = colBi, line_width = 1)
 
         // ---- 绘制: 线段 (黄色折线) ----
         if showSeg and array.size(segs) > 0
             pts = array.new<chart.point>()
             s0 = array.get(segs, 0)
-            array.push(pts, chart.point.from_index(base + array.get(bis, s0.b0).rawStart, array.get(bis, s0.b0).v0))
+            array.push(pts, chart.point.from_time(array.get(rTime, array.get(bis, s0.b0).rawStart), array.get(bis, s0.b0).v0))
             for sg in segs
                 eb = array.get(bis, sg.b1)
-                array.push(pts, chart.point.from_index(base + eb.rawEnd, eb.v1))
-            plSeg := polyline.new(pts, curved = false, closed = false, xloc = xloc.bar_index, line_color = colSeg, line_width = 2)
+                array.push(pts, chart.point.from_time(array.get(rTime, eb.rawEnd), eb.v1))
+            plSeg := polyline.new(pts, curved = false, closed = false, xloc = xloc.bar_time, line_color = colSeg, line_width = 2)
 
         // ---- 绘制: 中枢 (矩形 [ZD, ZG]; 9段升级中枢描红加粗, 课33) ----
         if showBiZs
@@ -842,9 +844,9 @@ if runNow
                 for i = math.max(0, nz - 120) to nz - 1
                     z = array.get(zsBi, i)
                     upg = z.e1 - z.e0 + 1 >= 9
-                    array.push(gBoxes, box.new(base + z.rawStart, z.zg, base + z.rawEnd, z.zd,
+                    array.push(gBoxes, box.new(array.get(rTime, z.rawStart), z.zg, array.get(rTime, z.rawEnd), z.zd,
                          border_color = upg ? #FF3D00 : colBiZs, border_width = upg ? 3 : 2,
-                         bgcolor = color.new(colBiZs, 88), xloc = xloc.bar_index,
+                         bgcolor = color.new(colBiZs, 88), xloc = xloc.bar_time,
                          text = upg ? "↑9段升级" : "", text_color = #FF3D00,
                          text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_top))
         if showSegZs
@@ -853,9 +855,9 @@ if runNow
                 for i = math.max(0, nz - 60) to nz - 1
                     z = array.get(zsSeg, i)
                     upg = z.e1 - z.e0 + 1 >= 9
-                    array.push(gBoxes, box.new(base + z.rawStart, z.zg, base + z.rawEnd, z.zd,
+                    array.push(gBoxes, box.new(array.get(rTime, z.rawStart), z.zg, array.get(rTime, z.rawEnd), z.zd,
                          border_color = upg ? #FF3D00 : colSegZs, border_width = upg ? 3 : 2,
-                         bgcolor = color.new(colSegZs, 92), xloc = xloc.bar_index,
+                         bgcolor = color.new(colSegZs, 92), xloc = xloc.bar_time,
                          text = upg ? "↑9段升级" : "", text_color = #FF3D00,
                          text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_top))
 
@@ -865,9 +867,9 @@ if runNow
             if ne > 0
                 for i = math.max(0, ne - 60) to ne - 1
                     z = array.get(zsBiExp, i)
-                    array.push(gBoxes, box.new(base + z.rawStart, z.zg, base + z.rawEnd, z.zd,
+                    array.push(gBoxes, box.new(array.get(rTime, z.rawStart), z.zg, array.get(rTime, z.rawEnd), z.zd,
                          border_color = colExp, border_width = 2, border_style = line.style_dashed,
-                         bgcolor = color.new(colExp, 94), xloc = xloc.bar_index,
+                         bgcolor = color.new(colExp, 94), xloc = xloc.bar_time,
                          text = "扩展", text_color = colExp, text_size = size.tiny,
                          text_halign = text.align_left, text_valign = text.align_bottom))
             if showSegZs
@@ -875,9 +877,9 @@ if runNow
                 if ne2 > 0
                     for i = math.max(0, ne2 - 30) to ne2 - 1
                         z = array.get(zsSegExp, i)
-                        array.push(gBoxes, box.new(base + z.rawStart, z.zg, base + z.rawEnd, z.zd,
+                        array.push(gBoxes, box.new(array.get(rTime, z.rawStart), z.zg, array.get(rTime, z.rawEnd), z.zd,
                              border_color = colExp, border_width = 3, border_style = line.style_dashed,
-                             bgcolor = color.new(colExp, 96), xloc = xloc.bar_index,
+                             bgcolor = color.new(colExp, 96), xloc = xloc.bar_time,
                              text = "段扩展", text_color = colExp, text_size = size.tiny,
                              text_halign = text.align_left, text_valign = text.align_bottom))
 
@@ -892,8 +894,8 @@ if runNow
                         continue
                     isBuy = p.typ > 0
                     tip = p.reason + (na(p.ratio) ? "" : ", 力度比=" + str.tostring(p.ratio, "#.##"))
-                    array.push(gLabels, label.new(base + p.rawIdx, p.price, f_bspName(p.typ),
-                         xloc = xloc.bar_index,
+                    array.push(gLabels, label.new(array.get(rTime, p.rawIdx), p.price, f_bspName(p.typ),
+                         xloc = xloc.bar_time,
                          style = isBuy ? label.style_label_up : label.style_label_down,
                          color = isPz ? color.new(isBuy ? colBuy : colSell, 45) : (isBuy ? colBuy : colSell),
                          textcolor = color.white, size = isPz ? size.tiny : size.small, tooltip = tip))
@@ -909,8 +911,8 @@ if runNow
                         continue
                     isBuy = p.typ > 0
                     tip = "[线段级] " + p.reason + (na(p.ratio) ? "" : ", 力度比=" + str.tostring(p.ratio, "#.##"))
-                    array.push(gLabels, label.new(base + p.rawIdx, p.price, "段" + f_bspName(p.typ),
-                         xloc = xloc.bar_index,
+                    array.push(gLabels, label.new(array.get(rTime, p.rawIdx), p.price, "段" + f_bspName(p.typ),
+                         xloc = xloc.bar_time,
                          style = isBuy ? label.style_label_up : label.style_label_down,
                          color = isPz ? color.new(isBuy ? colBuy : colSell, 30) : (isBuy ? colBuy : colSell),
                          textcolor = color.white, size = size.normal, tooltip = tip))
