@@ -1,0 +1,3 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-07-23T01:03:51Z,2026-07-21,588000.SS,科创50ETF(华夏·跟踪科创50),,,other,3B,BUY3,BUY,3,2026-07-20,1,1.737,2.016,CONSOLIDATION,1210,67,10,"向上突破中枢后回抽不回中枢(ZS8, price>ZG=1.475)",,8,1.425,1.475,1020,1171,data/futures_latest_signals/2026-07-23/charts/chan_588000_SS.png
+2026-07-23T01:03:51Z,2026-07-23,HG=F,Copper Jul 26,,,continuous,2S,SELL2,SELL,2,2026-07-22,1,6.5419998,6.4790001,CONSOLIDATION,1260,84,12,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-07-23/charts/chan_HG_F.png
