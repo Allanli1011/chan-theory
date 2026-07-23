@@ -20,6 +20,16 @@
 indicator("缠论 Chan Theory (笔/线段/中枢/买卖点)", "缠论", overlay = true,
      max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_polylines_count = 100)
 
+// bar_index 历史缓冲区: 笔/线段/中枢/买卖点用 chart.point.from_index / box.new /
+// label.new 在 xloc.bar_index 模式下把绘图对象锚定到"最大分析K线数"根之前的
+// K线上。Pine 会按静态分析自动决定 bar_index 的可回溯历史缓冲区大小, 但它推断
+// 不出脚本会回溯多远(因为回溯深度取决于运行时输入 maxBars, 不是编译期常量);
+// 若不显式声明, 缓冲区可能小于用户设置的"最大分析K线数", 导致报错
+// "requested historical offset (N) is beyond the historical buffer's limit"
+// 并使指标整体停止显示。显式声明缓冲区上限(与 maxBars 输入的 maxval 一致)
+// 即可避免。
+max_bars_back(bar_index, 9000)
+
 // ============================== 输入 ==============================
 grpA = "算法参数 (与 Python 版一致)"
 biMinDist   = input.int(4, "笔最小间距 (标准笔=4, 新笔=3)", minval = 3, maxval = 6, group = grpA)
