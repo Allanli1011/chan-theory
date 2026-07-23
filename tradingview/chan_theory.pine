@@ -26,16 +26,18 @@ indicator("缠论 Chan Theory (笔/线段/中枢/买卖点)", "缠论", overlay 
 // 不出脚本会回溯多远(因为回溯深度取决于运行时输入 maxBars, 不是编译期常量);
 // 若不显式声明, 缓冲区可能小于用户设置的"最大分析K线数", 导致报错
 // "requested historical offset (N) is beyond the historical buffer's limit"
-// 并使指标整体停止显示。显式声明缓冲区上限(与 maxBars 输入的 maxval 一致)
-// 即可避免。
-max_bars_back(bar_index, 9000)
+// 并使指标整体停止显示。max_bars_back() 的第一个参数必须是【用户自己声明的
+// 标识符】, 不能直接传内置的 bar_index (会报 CE10164); 第二个参数(缓冲区
+// 大小)平台硬顶 5000, 所以下面 maxBars 输入的上限也同步设为 5000。
+barIdxRef = bar_index
+max_bars_back(barIdxRef, 5000)
 
 // ============================== 输入 ==============================
 grpA = "算法参数 (与 Python 版一致)"
 biMinDist   = input.int(4, "笔最小间距 (标准笔=4, 新笔=3)", minval = 3, maxval = 6, group = grpA)
 beichiRatio = input.float(0.9, "背驰面积比阈值 beichi_ratio", minval = 0.1, maxval = 1.0, step = 0.05, group = grpA)
 zsModeStr   = input.string("中枢延伸 extension", "中枢模式 zhongshu_mode", options = ["中枢延伸 extension", "同级别分解 same_level"], group = grpA)
-maxBars     = input.int(3000, "最大分析K线数", minval = 300, maxval = 9000, group = grpA)
+maxBars     = input.int(3000, "最大分析K线数", minval = 300, maxval = 5000, group = grpA)
 onlyConfirm = input.bool(false, "仅在K线收盘后更新", group = grpA)
 enableAlert = input.bool(true, "新买卖点触发 alert()", group = grpA)
 
