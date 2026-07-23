@@ -676,14 +676,30 @@ alphaG = 2.0 / (macdSig + 1)
 var array<float> rHi = array.new_float()
 var array<float> rLo = array.new_float()
 var array<float> rCl = array.new_float()
+var int lastCollectedBar = -1
+// 关键: 最后一根(可能未收盘)K线每来一个 tick 脚本都会重跑一次。若不判断
+// "是否已是同一根K线", 每个 tick 都会 push 一条记录, 使 rHi/rLo/rCl 的长度
+// 远快于真实K线数增长; 下面 base = last_bar_index - (nRaw-1) 的换算前提
+// (数组一条记录对应一根K线) 被打破后 base 会算出偏小甚至负数, 后续所有
+// base + rawIdx 的绘图调用会引用不存在的K线下标而报运行时错误、指标整体
+// 停止显示 —— 这正是"运行几根新K线后突然出错"的根因。修法: 同一根K线的
+// 后续 tick 只原地更新最后一条记录, 只有换到新的 bar_index 才真正 push。
 if bar_index > last_bar_index - maxBars
-    array.push(rHi, high)
-    array.push(rLo, low)
-    array.push(rCl, close)
-    if array.size(rHi) > maxBars   // 实时盘中新增K线时保持窗口长度
-        array.shift(rHi)
-        array.shift(rLo)
-        array.shift(rCl)
+    if bar_index != lastCollectedBar
+        array.push(rHi, high)
+        array.push(rLo, low)
+        array.push(rCl, close)
+        lastCollectedBar := bar_index
+        if array.size(rHi) > maxBars   // 实时盘中新增K线时保持窗口长度
+            array.shift(rHi)
+            array.shift(rLo)
+            array.shift(rCl)
+    else
+        nCollected = array.size(rHi)
+        if nCollected > 0
+            array.set(rHi, nCollected - 1, high)
+            array.set(rLo, nCollected - 1, low)
+            array.set(rCl, nCollected - 1, close)
 
 // ============================== 主流程与绘制 ==============================
 var polyline plBi = na
@@ -692,6 +708,12 @@ var array<box> gBoxes = array.new<box>()
 var array<label> gLabels = array.new<label>()
 var table tbl = table.new(position.top_right, 2, 8, bgcolor = color.new(color.black, 78), border_width = 1, border_color = color.new(color.gray, 65))
 var int lastAlertBar = -1
+// 声音提醒: Pine 脚本不能强制播放声音, 声音开关在创建警报弹窗的
+// Notifications -> "Play Sound" 里。这里按类型拆出两个独立布尔标志,
+// 供脚本末尾的 alertcondition() 使用, 让用户能单独为"真正的一/二/三类
+// 买卖点"和"盘整背驰提示(非正式买卖点)"分别开关声音, 见文件末尾说明。
+sigRealFire = false
+sigPzFire = false
 
 runNow = barstate.islast and (not onlyConfirm or barstate.isconfirmed or barstate.ishistory)
 if runNow
@@ -953,7 +975,26 @@ if runNow
                 if absIdx >= last_bar_index - 3 and absIdx != lastAlertBar
                     lastAlertBar := absIdx
                     alert("缠论 [" + (alertSeg ? "线段级" : "笔级") + "] " + f_bspName(alertP.typ) + " @ " + str.tostring(alertP.price) + (na(alertP.ratio) ? "" : " 力度比=" + str.tostring(alertP.ratio, "#.##")), alert.freq_once_per_bar)
+                    // 按类型点亮对应标志, 供下方独立的 alertcondition() 使用
+                    if alertP.typ == 4 or alertP.typ == -4
+                        sigPzFire := true
+                    else
+                        sigRealFire := true
     else
         if showTable
             table.cell(tbl, 0, 0, "缠论", text_color = color.white, text_size = size.small)
             table.cell(tbl, 1, 0, "K线不足(<30)", text_color = color.gray, text_size = size.small)
+
+// ============================== 声音提醒 ==============================
+// 创建警报的步骤: 图表右键 / 右侧闹钟图标 -> 添加提醒 -> "条件"选下面三者之一:
+//   1) "任何 alert() 函数调用"           —— 全部类型都提醒, 消息最详细(含
+//                                          具体信号名/价格/力度比), 见上方 alert()
+//   2) "缠论: 一/二/三类买卖点"           —— 只对真正的买卖点提醒, 跳过盘整背驰
+//   3) "缠论: 盘整背驰提示(非正式买卖点)" —— 只关注盘整背驰(课24/27)
+// 选好条件后, 在同一个弹窗的"通知"栏勾选"声音提醒"并选一个铃声即可 ——
+// 声音本身是 TradingView 警报自带的开关, Pine 脚本无法从代码里强制播放,
+// 只能负责"什么时候触发"这一步。
+alertcondition(sigRealFire, title = "缠论: 一/二/三类买卖点",
+     message = "缠论出现新的一/二/三类买卖点 {{ticker}} {{interval}} 收盘价{{close}}, 详情看图表")
+alertcondition(sigPzFire, title = "缠论: 盘整背驰提示(非正式买卖点)",
+     message = "缠论出现新的盘整背驰提示 {{ticker}} {{interval}} 收盘价{{close}}, 详情看图表")
