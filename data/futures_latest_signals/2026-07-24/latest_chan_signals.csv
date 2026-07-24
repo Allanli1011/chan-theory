@@ -1,0 +1,2 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-07-24T00:57:32Z,2026-07-24,ETH=F,Ethereum Jun 26,,,continuous,3S,SELL3,SELL,3,2026-07-22,2,1959,1868.5,CONSOLIDATION,1262,76,13,"向下跌破中枢后反抽不回中枢(ZS11, price<ZD=2227)",,11,2227,2390,1142,1224,data/futures_latest_signals/2026-07-24/charts/chan_ETH_F.png
