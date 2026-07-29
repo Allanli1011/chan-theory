@@ -1,0 +1,3 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-07-29T00:59:06Z,2026-07-29,SI=F,Silver Jul 26,,,continuous,2S,SELL2,SELL,2,2026-07-28,1,58.825001,57.465,CONSOLIDATION,1259,85,10,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-07-29/charts/chan_SI_F.png
+2026-07-29T00:59:06Z,2026-07-29,ZQ=F,"30 Day Federal Funds Futures,Au",,,continuous,3B,BUY3,BUY,3,2026-07-28,1,96.275002,96.285004,DOWN,1260,9,2,"向上突破中枢后回抽不回中枢(ZS1, price>ZG=94.69)",,1,94.667503,94.690002,527,928,data/futures_latest_signals/2026-07-29/charts/chan_ZQ_F.png
