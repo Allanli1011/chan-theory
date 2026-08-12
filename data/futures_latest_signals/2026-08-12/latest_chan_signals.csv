@@ -1,0 +1,3 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-08-12T00:08:42Z,2026-08-10,159915.SZ,创业板ETF(易方达·跟踪创业板指),,,other,2S,SELL2,SELL,2,2026-08-07,1,3.6359999,3.559,CONSOLIDATION,1210,77,12,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-08-12/charts/chan_159915_SZ.png
+2026-08-12T00:08:42Z,2026-08-11,SIL=F,"Micro Silver Futures,Jul-2026",,,continuous,2S,SELL2,SELL,2,2026-08-10,1,65.106003,64.93,CONSOLIDATION,1259,89,13,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-08-12/charts/chan_SIL_F.png
