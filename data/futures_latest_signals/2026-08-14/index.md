@@ -1,6 +1,6 @@
 # Latest Yahoo Chan Signals
 
-- Generated UTC: 2026-08-14T00:08:51Z
+- Generated UTC: 2026-08-14T23:49:57Z
 - Date folder: 2026-08-14
 - Candidate symbols: 75
 - Symbols scanned: 75
@@ -15,6 +15,6 @@
 
 | Symbol | Name | Signal | Ref ZS | Signal Date | Age | Price | Trend | Chart |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| GC=F | Gold Aug 26 | 3S | ZS13 | 2026-08-12 | 1 | 4434 | CONSOLIDATION | [chart](charts/chan_GC_F.png) |
-| SI=F | Silver Jul 26 | 2S |  | 2026-08-12 | 1 | 66.650002 | CONSOLIDATION | [chart](charts/chan_SI_F.png) |
-| SIL=F | Micro Silver Futures,Jul-2026 | 2S |  | 2026-08-12 | 1 | 65.555 | CONSOLIDATION | [chart](charts/chan_SIL_F.png) |
+| 000300.SS | 沪深300 | 2S |  | 2026-08-13 | 1 | 4727.2344 | CONSOLIDATION | [chart](charts/chan_000300_SS.png) |
+| 6J=F | Japanese Yen Futures,Jun-2026 | 2B |  | 2026-08-13 | 1 | 0.006269 | CONSOLIDATION | [chart](charts/chan_6J_F.png) |
+| M2K=F | Micro E-mini Russell 2000 Index | 1S |  | 2026-08-13 | 1 | 3078.2 | CONSOLIDATION | [chart](charts/chan_M2K_F.png) |
