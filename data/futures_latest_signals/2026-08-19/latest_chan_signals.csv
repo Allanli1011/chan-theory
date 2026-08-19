@@ -1,0 +1,3 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-08-19T23:49:12Z,2026-08-19,000300.SS,沪深300,,,other,2S,SELL2,SELL,2,2026-08-18,1,4744.0054,4588.6953,CONSOLIDATION,1201,71,8,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-08-19/charts/chan_000300_SS.png
+2026-08-19T23:49:12Z,2026-08-19,CT=F,Cotton Mar 26,,,continuous,1S,SELL1,SELL,1,2026-08-18,1,84.949997,87.699997,CONSOLIDATION,1258,79,9,上涨趋势背驰(后笔红柱面积更小),0.488326,,,,,,data/futures_latest_signals/2026-08-19/charts/chan_CT_F.png
