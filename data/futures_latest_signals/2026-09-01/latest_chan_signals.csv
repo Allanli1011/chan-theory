@@ -1,0 +1,5 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-09-01T01:59:46Z,2026-08-31,AAPL,Apple 苹果,,,other,2S,SELL2,SELL,2,2026-08-28,1,322.37,316.85001,CONSOLIDATION,1255,80,12,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-09-01/charts/chan_AAPL.png
+2026-09-01T01:59:46Z,2026-08-31,OJ=F,Orange Juice Jul 26,,,continuous,1B,BUY1,BUY,1,2026-08-28,1,127.35,139.95,CONSOLIDATION,1258,95,11,下跌趋势背驰(后笔绿柱面积更小),0.897538,,,,,,data/futures_latest_signals/2026-09-01/charts/chan_OJ_F.png
+2026-09-01T01:59:46Z,2026-09-01,SI=F,Silver Jul 26,,,continuous,2S,SELL2,SELL,2,2026-08-28,1,71.160004,67.355003,CONSOLIDATION,1258,83,10,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-09-01/charts/chan_SI_F.png
+2026-09-01T01:59:46Z,2026-09-01,SIL=F,"Micro Silver Futures,Jul-2026",,,continuous,2S,SELL2,SELL,2,2026-08-28,1,71.199997,67.339996,CONSOLIDATION,1258,87,13,一卖后首次反抽不破前高,,,,,,,data/futures_latest_signals/2026-09-01/charts/chan_SIL_F.png
