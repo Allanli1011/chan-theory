@@ -1,0 +1,3 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-09-26T01:52:13Z,2026-09-25,6J=F,"Japanese Yen Futures,Jun-2026",,,continuous,2B,BUY2,BUY,2,2026-09-24,1,0.0063009998,0.0063979998,CONSOLIDATION,1260,64,10,一买后首次回抽不破前低,,,,,,,data/futures_latest_signals/2026-09-26/charts/chan_6J_F.png
+2026-09-26T01:52:13Z,2026-09-25,RB=F,RBOB Gasoline Jul 26,,,continuous,1S,SELL1,SELL,1,2026-09-24,1,3.6547,3.1968,CONSOLIDATION,1260,75,10,上涨趋势背驰(后笔红柱面积更小),0.744926,,,,,,data/futures_latest_signals/2026-09-26/charts/chan_RB_F.png
