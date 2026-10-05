@@ -68,6 +68,7 @@ jobs:
           name: futures-chan-latest-signals
           path: data/futures_latest_signals/
           if-no-files-found: error
+          retention-days: 3
 
       - name: Commit generated scan results
         run: |
