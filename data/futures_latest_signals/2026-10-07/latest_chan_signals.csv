@@ -1,0 +1,2 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-10-07T02:38:17Z,2026-09-30,159915.SZ,创业板ETF(易方达·跟踪创业板指),,,other,1B,BUY1,BUY,1,2026-09-29,1,3.1389999,3.154,CONSOLIDATION,1211,79,13,下跌趋势背驰(后笔绿柱面积更小),0.140146,,,,,,data/futures_latest_signals/2026-10-07/charts/chan_159915_SZ.png
