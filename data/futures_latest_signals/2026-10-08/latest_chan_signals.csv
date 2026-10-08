@@ -1,0 +1,2 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-10-08T02:51:42Z,2026-10-07,NVDA,NVIDIA 英伟达,,,other,1S,SELL1,SELL,1,2026-10-06,1,243.37,237.47,CONSOLIDATION,1255,83,14,上涨趋势背驰(后笔红柱面积更小),0.326428,,,,,,data/futures_latest_signals/2026-10-08/charts/chan_NVDA.png
