@@ -1,0 +1,2 @@
+﻿scan_time_utc,recognized_date,symbol,short_name,exchange,full_exchange_name,contract_kind,signal,signal_type,side,class,signal_date,signal_bar_age,price,latest_close,trend,bars,bis,bi_zhongshus,reason,beichi_ratio,ref_zs_idx,ref_zs_zd,ref_zs_zg,ref_zs_raw_start,ref_zs_raw_end,chart_path
+2026-10-17T01:27:29Z,2026-10-15,AAPL,Apple 苹果,,,other,1S,SELL1,SELL,1,2026-10-13,2,348.14999,342,CONSOLIDATION,1255,80,12,上涨趋势背驰(后笔红柱面积更小),0,,,,,,data/futures_latest_signals/2026-10-17/charts/chan_AAPL.png
